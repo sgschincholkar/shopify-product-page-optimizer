@@ -41,6 +41,9 @@
 
 ### Remaining full build
 
+- [x] Add Convex `stores`, `audits`, and `payments` schema/functions
+- [x] Provision a Convex development deployment and HTTP action
+- [x] Verify Convex `/api/audit` OPTIONS response with HTTP 200
 - [ ] Extract complete PDP context: description, bullets, price, reviews, images
 - [ ] Discover and extract 3–5 relevant competitor PDPs
 - [ ] Analyze positioning, claims, objections, pricing, and keyword patterns
@@ -126,7 +129,9 @@ The persistence call must not block a usable fallback result if Convex is unavai
 - [x] `npm run build` passes.
 - [x] Browser-tested the fallback path with `https://example.com` and confirmed no console errors.
 - [x] Contract-tested mocked Hermes plus mocked Convex response; returned `source: "hermes"` and `persistence.status: "saved"`.
-- [ ] Live Hermes and Convex endpoints are not configured, so the real request → Hermes → Convex path remains unverified.
+- [x] Added Convex schema, audit mutations, payment mutation, and HTTP action.
+- [x] Provisioned a Convex development deployment and verified its HTTP action with status 200.
+- [ ] Live Hermes upstream is not configured (`HERMES_AUDIT_URL` / `HERMES_UPSTREAM_URL` missing).
 - [ ] Current Dodo CTA remains an explicit placeholder.
 
 Local `.dev.vars` or shell environment:

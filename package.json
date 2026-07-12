@@ -11,5 +11,8 @@
   },
   "devDependencies": {
     "vite": "^6.1.0"
+  },
+  "dependencies": {
+    "convex": "^1.42.1"
   }
 }
