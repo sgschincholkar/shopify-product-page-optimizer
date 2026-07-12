@@ -1,4 +1,4 @@
-import { createFreeTitle, createFullPack, extractPageTitle, validateAuditInput } from '../../../src/audit-core.js';
+import { createFreeTitle, createFullPack, extractPdpContext, extractPageTitle, validateAuditInput } from '../../../src/audit-core.js';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -27,7 +27,8 @@ async function linkupCompetitors(input, apiKey) {
   });
   if (!productPage.ok) throw new Error('The product page could not be loaded.');
   const html = await productPage.text();
-  const originalTitle = extractPageTitle(html);
+  const pdpContext = extractPdpContext(html, input.productUrl);
+  const originalTitle = pdpContext.title;
   const query = `${originalTitle} ${input.verticalHint || ''} product page competitors Shopify`.trim();
   const linkupResponse = await fetchWithTimeout('https://api.linkup.so/v1/search', {
     method: 'POST',
@@ -55,16 +56,17 @@ async function linkupCompetitors(input, apiKey) {
       }
     })
     .slice(0, 5);
-  return { originalTitle, competitors };
+  return { originalTitle, pdpContext, competitors };
 }
 
 async function linkupAudit(body, apiKey) {
   const input = validateAuditInput(body);
-  const { originalTitle, competitors } = await linkupCompetitors(input, apiKey);
+  const { originalTitle, pdpContext, competitors } = await linkupCompetitors(input, apiKey);
   return {
     auditId: crypto.randomUUID(),
     productUrl: input.productUrl,
     originalTitle,
+    pdpContext,
     newTitle: createFreeTitle(originalTitle),
     competitors,
     fullPack: createFullPack(originalTitle, competitors),
@@ -77,7 +79,22 @@ async function linkupAudit(body, apiKey) {
 
 export async function onRequestPost(context) {
   if (context.env.HERMES_UPSTREAM_URL) {
-    const body = await context.request.text();
+    const rawBody = await context.request.text();
+    let upstreamBody = rawBody;
+    try {
+      const input = validateAuditInput(JSON.parse(rawBody));
+      if (context.env.LINKUP_API_KEY) {
+        try {
+          const benchmark = await linkupCompetitors(input, context.env.LINKUP_API_KEY);
+          upstreamBody = JSON.stringify({ ...input, pdpContext: benchmark.pdpContext, competitors: benchmark.competitors });
+        } catch {
+          // Hermes can still scrape the URL itself if Linkup is temporarily unavailable.
+          upstreamBody = JSON.stringify(input);
+        }
+      }
+    } catch {
+      return json({ error: 'Invalid audit payload.' }, 400);
+    }
     let upstream;
     try {
       upstream = await fetch(context.env.HERMES_UPSTREAM_URL, {
@@ -86,7 +103,7 @@ export async function onRequestPost(context) {
           'content-type': 'application/json',
           ...(context.env.HERMES_UPSTREAM_TOKEN ? { authorization: `Bearer ${context.env.HERMES_UPSTREAM_TOKEN}` } : {}),
         },
-        body,
+        body: upstreamBody,
       });
     } catch {
       return json({ error: 'Hermes upstream is unavailable.' }, 502);

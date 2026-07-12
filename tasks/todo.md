@@ -44,12 +44,14 @@
 - [x] Add Convex `stores`, `audits`, and `payments` schema/functions
 - [x] Provision a Convex development deployment and HTTP action
 - [x] Verify Convex `/api/audit` OPTIONS response with HTTP 200
-- [ ] Extract complete PDP context: description, bullets, price, reviews, images
+- [x] Extract complete PDP context: description, bullets, price, reviews, images
 - [x] Discover and extract up to 5 relevant competitor PDPs through Linkup
 - [x] Add fallback behavior when competitor discovery fails
+- [x] Pass structured PDP context and competitor evidence to Hermes upstream
 - [x] Generate a payment-free development full pack: title, bullets, FAQs, trust copy, SEO, and image recommendations
 - [x] Render the full pack in the browser result state
 - [ ] Analyze positioning, claims, objections, pricing, and keyword patterns with Hermes
+- [ ] Generate structured free title output through Hermes
 - [x] Add Convex `stores`, `audits`, and `payments` schema/functions
 - [x] Add fallback behavior when competitor discovery fails
 - [x] Add Dodo server-side checkout creation with audit metadata
@@ -59,6 +61,7 @@
 - [ ] Mark audits paid and persist payment records in Convex
 - [x] Generate and persist the full upgrade pack in the payment-free development path
 - [x] Add payment-free full-pack screen
+- [x] Return the Convex-stored title, competitors, and full pack in the audit response
 - [ ] Add email delivery
 - [ ] Deploy to Cloudflare Pages and configure production secrets
 - [ ] Run real end-to-end demo on a public Shopify PDP
@@ -138,7 +141,10 @@ The persistence call must not block a usable fallback result if Convex is unavai
 - [x] Bundled all three Pages Functions successfully after fixing the nested import path.
 - [x] Live Linkup request returned HTTP 200 and five competitor results.
 - [x] Linkup-backed title output is explicitly labeled `linkup-benchmarked-fallback`.
+- [x] Structured PDP extraction now returns title, description, price, headings, bullets, images, and JSON-LD.
+- [x] Local real integration harness passed: Linkup returned 5 competitors, Convex saved the audit, and the stored full pack was returned.
 - [ ] True Hermes upstream generation remains pending because `HERMES_UPSTREAM_URL` is missing.
+- [ ] Production `/api/audit` verification/redeploy remains pending because Wrangler is not authenticated in this session.
 - [x] Dodo checkout contract test passed: product cart, customer email, return URL, and audit metadata are sent server-side.
 - [x] Dodo route bundled with all Pages Functions and the frontend build passes.
 - [ ] Live Dodo test checkout returned HTTP 401 Unauthorized; replace the test/live API key pairing before charging or claiming checkout is live.

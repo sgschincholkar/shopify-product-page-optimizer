@@ -42,7 +42,15 @@ export const saveFreeAudit = mutation({
       externalAuditId: args.auditId,
     };
     const auditId = existingAudit ? (await ctx.db.replace(existingAudit._id, record), existingAudit._id) : await ctx.db.insert('audits', record);
-    return { auditId, externalAuditId: args.auditId };
+    return {
+      auditId,
+      externalAuditId: args.auditId,
+      status: record.status,
+      originalTitle: record.originalTitle,
+      newTitle: record.newTitle,
+      fullPackJson: record.fullPackJson,
+      competitors: record.competitors,
+    };
   },
 });
 
