@@ -51,7 +51,9 @@
 - [ ] Generate structured free title output through Hermes
 - [ ] Add Convex `stores`, `audits`, and `payments` schema/functions
 - [ ] Add fallback behavior when competitor discovery fails
-- [ ] Add Dodo checkout with audit ID metadata
+- [x] Add Dodo server-side checkout creation with audit metadata
+- [x] Add frontend checkout handoff and recoverable error state
+- [ ] Verify a real Dodo test checkout after replacing the unauthorized/mismatched credential
 - [ ] Add signed, idempotent Dodo webhook
 - [ ] Mark audits paid and persist payment records in Convex
 - [ ] Generate and persist the full upgrade pack after payment
@@ -136,7 +138,9 @@ The persistence call must not block a usable fallback result if Convex is unavai
 - [x] Live Linkup request returned HTTP 200 and five competitor results.
 - [x] Linkup-backed title output is explicitly labeled `linkup-benchmarked-fallback`.
 - [ ] True Hermes upstream generation remains pending because `HERMES_UPSTREAM_URL` is missing.
-- [ ] Current Dodo CTA remains an explicit placeholder.
+- [x] Dodo checkout contract test passed: product cart, customer email, return URL, and audit metadata are sent server-side.
+- [x] Dodo route bundled with all Pages Functions and the frontend build passes.
+- [ ] Live Dodo test checkout returned HTTP 401 Unauthorized; replace the test/live API key pairing before charging or claiming checkout is live.
 
 Local `.dev.vars` or shell environment:
 

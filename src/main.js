@@ -34,9 +34,23 @@ const setError = (message) => { formError.textContent = message; formError.class
 function showResult(result, email) {
   const sourceLabel = result.source === 'hermes' ? 'Hermes benchmarked title' : 'Fallback title preview';
   const persistenceLabel = result.persistence?.status === 'saved' ? 'Audit saved' : result.persistence?.status === 'failed' ? 'Audit result ready; save is pending' : 'Preview only';
-  processing.innerHTML = `<p class="eyebrow success-label">Title upgrade ready</p><h2>Same product.<br /><em>Sharper promise.</em></h2><div class="comparison"><div><small>Current title</small><p>${escapeHtml(result.originalTitle)}</p></div><div class="arrow">→</div><div class="new-title"><small>Your upgraded title</small><p>${escapeHtml(result.newTitle)}</p></div></div><button class="primary-btn" type="button" id="unlock">Unlock full pack · $19 <span>→</span></button><p class="form-note"><span>✓</span> Full pack delivery to ${escapeHtml(email)} comes after checkout.</p><p class="audit-source"><strong>${escapeHtml(sourceLabel)}</strong> · ${escapeHtml(persistenceLabel)}<br />${escapeHtml(result.note || 'Free title generated from your product page.')}</p>`;
-  document.querySelector('#unlock').addEventListener('click', () => {
-    alert('Dodo checkout is the next integration. No payment was taken.');
+  processing.innerHTML = `<p class="eyebrow success-label">Title upgrade ready</p><h2>Same product.<br /><em>Sharper promise.</em></h2><div class="comparison"><div><small>Current title</small><p>${escapeHtml(result.originalTitle)}</p></div><div class="arrow">→</div><div class="new-title"><small>Your upgraded title</small><p>${escapeHtml(result.newTitle)}</p></div></div><button class="primary-btn" type="button" id="unlock">Unlock full pack · $19 <span>→</span></button><p id="checkout-status" class="form-note" role="status"><span>✓</span> Full pack delivery to ${escapeHtml(email)} comes after checkout.</p><p class="audit-source"><strong>${escapeHtml(sourceLabel)}</strong> · ${escapeHtml(persistenceLabel)}<br />${escapeHtml(result.note || 'Free title generated from your product page.')}</p>`;
+  document.querySelector('#unlock').addEventListener('click', async () => {
+    const button = document.querySelector('#unlock');
+    const status = document.querySelector('#checkout-status');
+    button.disabled = true;
+    button.innerHTML = 'Opening secure checkout…';
+    try {
+      const response = await fetch('/api/dodo/checkout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ auditId: result.auditId, email }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Checkout could not be started.');
+      window.location.href = payload.checkoutUrl;
+    } catch (error) {
+      button.disabled = false;
+      button.innerHTML = 'Unlock full pack · $19 <span>→</span>';
+      status.textContent = error.message || 'Checkout could not be started. Try again.';
+      status.classList.add('form-error');
+    }
   });
 }
 
