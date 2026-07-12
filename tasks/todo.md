@@ -45,7 +45,8 @@
 - [x] Provision a Convex development deployment and HTTP action
 - [x] Verify Convex `/api/audit` OPTIONS response with HTTP 200
 - [ ] Extract complete PDP context: description, bullets, price, reviews, images
-- [ ] Discover and extract 3–5 relevant competitor PDPs
+- [x] Discover and extract up to 5 relevant competitor PDPs through Linkup
+- [x] Add fallback behavior when competitor discovery fails
 - [ ] Analyze positioning, claims, objections, pricing, and keyword patterns
 - [ ] Generate structured free title output through Hermes
 - [ ] Add Convex `stores`, `audits`, and `payments` schema/functions
@@ -131,7 +132,10 @@ The persistence call must not block a usable fallback result if Convex is unavai
 - [x] Contract-tested mocked Hermes plus mocked Convex response; returned `source: "hermes"` and `persistence.status: "saved"`.
 - [x] Added Convex schema, audit mutations, payment mutation, and HTTP action.
 - [x] Provisioned a Convex development deployment and verified its HTTP action with status 200.
-- [ ] Live Hermes upstream is not configured (`HERMES_AUDIT_URL` / `HERMES_UPSTREAM_URL` missing).
+- [x] Bundled all three Pages Functions successfully after fixing the nested import path.
+- [x] Live Linkup request returned HTTP 200 and five competitor results.
+- [x] Linkup-backed title output is explicitly labeled `linkup-benchmarked-fallback`.
+- [ ] True Hermes upstream generation remains pending because `HERMES_UPSTREAM_URL` is missing.
 - [ ] Current Dodo CTA remains an explicit placeholder.
 
 Local `.dev.vars` or shell environment:
