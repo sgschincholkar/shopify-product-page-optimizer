@@ -49,8 +49,8 @@
 - [x] Add fallback behavior when competitor discovery fails
 - [ ] Analyze positioning, claims, objections, pricing, and keyword patterns
 - [ ] Generate structured free title output through Hermes
-- [ ] Add Convex `stores`, `audits`, and `payments` schema/functions
-- [ ] Add fallback behavior when competitor discovery fails
+- [x] Add Convex `stores`, `audits`, and `payments` schema/functions
+- [x] Add fallback behavior when competitor discovery fails
 - [x] Add Dodo server-side checkout creation with audit metadata
 - [x] Add frontend checkout handoff and recoverable error state
 - [ ] Verify a real Dodo test checkout after replacing the unauthorized/mismatched credential
