@@ -51,7 +51,7 @@
 - [x] Generate a payment-free development full pack: title, bullets, FAQs, trust copy, SEO, and image recommendations
 - [x] Render the full pack in the browser result state
 - [ ] Analyze positioning, claims, objections, pricing, and keyword patterns with Hermes
-- [ ] Generate structured free title output through Hermes
+- [x] Generate structured free title output through Hermes
 - [x] Add Convex `stores`, `audits`, and `payments` schema/functions
 - [x] Add fallback behavior when competitor discovery fails
 - [x] Add Dodo server-side checkout creation with audit metadata
@@ -143,7 +143,9 @@ The persistence call must not block a usable fallback result if Convex is unavai
 - [x] Linkup-backed title output is explicitly labeled `linkup-benchmarked-fallback`.
 - [x] Structured PDP extraction now returns title, description, price, headings, bullets, images, and JSON-LD.
 - [x] Local real integration harness passed: Linkup returned 5 competitors, Convex saved the audit, and the stored full pack was returned.
-- [ ] True Hermes upstream generation remains pending because `HERMES_UPSTREAM_URL` is missing.
+- [x] True Hermes agent adapter implemented: PDP scrape → Linkup competitors → Hermes CLI → strict full-pack JSON.
+- [x] Public Quick Tunnel returned a real `source: hermes`, `mode: hermes` response with 5 competitors and all full-pack fields.
+- [ ] Set the production Cloudflare `HERMES_UPSTREAM_URL` to the reachable adapter and redeploy/verify a real Shopify PDP.
 - [ ] Production `/api/audit` verification/redeploy remains pending because Wrangler is not authenticated in this session.
 - [x] Dodo checkout contract test passed: product cart, customer email, return URL, and audit metadata are sent server-side.
 - [x] Dodo route bundled with all Pages Functions and the frontend build passes.

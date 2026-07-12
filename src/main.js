@@ -32,7 +32,7 @@ const formError = document.querySelector('#form-error');
 const setError = (message) => { formError.textContent = message; formError.classList.toggle('hidden', !message); };
 
 function showResult(result, email) {
-  const sourceLabel = result.source === 'hermes' ? 'Hermes benchmarked title' : result.source === 'linkup-benchmarked-fallback' ? 'Linkup competitor preview' : 'Fallback title preview';
+  const sourceLabel = result.mode === 'hermes' || result.source === 'hermes' ? 'Hermes-generated output' : result.source === 'linkup-benchmarked-fallback' ? 'Linkup competitor preview' : 'Fallback title preview';
   const persistenceLabel = result.persistence?.status === 'saved' ? 'Audit saved' : result.persistence?.status === 'failed' ? 'Audit result ready; save is pending' : 'Preview only';
   const pack = result.fullPack;
   const packHtml = pack ? `<section class="full-pack"><div class="pack-section"><small>Benefits-first bullets</small><ul>${(pack.bullets || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div><div class="pack-section"><small>FAQ draft</small><div class="faq-list">${(pack.faqs || []).map((item) => `<details><summary>${escapeHtml(item.question)}</summary><p>${escapeHtml(item.answer)}</p></details>`).join('')}</div></div><div class="pack-section"><small>Trust copy</small><p>${escapeHtml(pack.trustCopy || '')}</p></div><div class="pack-grid"><div><small>SEO meta title</small><p>${escapeHtml(pack.seo?.metaTitle || '')}</p></div><div><small>SEO description</small><p>${escapeHtml(pack.seo?.metaDescription || '')}</p></div></div><div class="pack-section"><small>Image recommendations</small><ul>${(pack.imageRecommendations || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div></section>` : '';
