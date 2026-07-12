@@ -11,4 +11,5 @@
 
 - Captured the global Claude working rules and PRD-aligned V1 sequence in `tasks/todo.md`.
 - No application behavior changed in this step.
-- Next implementation target: the real free-audit API seam.
+- Payment is intentionally deferred while the application is developed end to end. The current development path shows and persists the full pack without Dodo.
+- The full pack is currently a transparent fallback generator; it must not be described as live Hermes output until `HERMES_UPSTREAM_URL` is configured and exercised.

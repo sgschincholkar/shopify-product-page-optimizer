@@ -8,10 +8,11 @@ export const saveFreeAudit = mutation({
     auditId: v.string(),
     productUrl: v.string(),
     userEmail: v.string(),
-    status: v.literal('free_done'),
+    status: v.union(v.literal('free_done'), v.literal('full_pack_ready'), v.literal('paid')),
     originalTitle: v.string(),
     newTitle: v.string(),
     competitors: v.array(competitorValidator),
+    fullPackJson: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -35,6 +36,7 @@ export const saveFreeAudit = mutation({
       originalTitle: args.originalTitle,
       newTitle: args.newTitle,
       competitors: args.competitors,
+      fullPackJson: args.fullPackJson,
       createdAt: existingAudit?.createdAt ?? now,
       updatedAt: now,
       externalAuditId: args.auditId,

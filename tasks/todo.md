@@ -47,8 +47,9 @@
 - [ ] Extract complete PDP context: description, bullets, price, reviews, images
 - [x] Discover and extract up to 5 relevant competitor PDPs through Linkup
 - [x] Add fallback behavior when competitor discovery fails
-- [ ] Analyze positioning, claims, objections, pricing, and keyword patterns
-- [ ] Generate structured free title output through Hermes
+- [x] Generate a payment-free development full pack: title, bullets, FAQs, trust copy, SEO, and image recommendations
+- [x] Render the full pack in the browser result state
+- [ ] Analyze positioning, claims, objections, pricing, and keyword patterns with Hermes
 - [x] Add Convex `stores`, `audits`, and `payments` schema/functions
 - [x] Add fallback behavior when competitor discovery fails
 - [x] Add Dodo server-side checkout creation with audit metadata
@@ -56,8 +57,8 @@
 - [ ] Verify a real Dodo test checkout after replacing the unauthorized/mismatched credential
 - [ ] Add signed, idempotent Dodo webhook
 - [ ] Mark audits paid and persist payment records in Convex
-- [ ] Generate and persist the full upgrade pack after payment
-- [ ] Add paid full-pack screen
+- [x] Generate and persist the full upgrade pack in the payment-free development path
+- [x] Add payment-free full-pack screen
 - [ ] Add email delivery
 - [ ] Deploy to Cloudflare Pages and configure production secrets
 - [ ] Run real end-to-end demo on a public Shopify PDP

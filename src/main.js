@@ -32,26 +32,11 @@ const formError = document.querySelector('#form-error');
 const setError = (message) => { formError.textContent = message; formError.classList.toggle('hidden', !message); };
 
 function showResult(result, email) {
-  const sourceLabel = result.source === 'hermes' ? 'Hermes benchmarked title' : 'Fallback title preview';
+  const sourceLabel = result.source === 'hermes' ? 'Hermes benchmarked title' : result.source === 'linkup-benchmarked-fallback' ? 'Linkup competitor preview' : 'Fallback title preview';
   const persistenceLabel = result.persistence?.status === 'saved' ? 'Audit saved' : result.persistence?.status === 'failed' ? 'Audit result ready; save is pending' : 'Preview only';
-  processing.innerHTML = `<p class="eyebrow success-label">Title upgrade ready</p><h2>Same product.<br /><em>Sharper promise.</em></h2><div class="comparison"><div><small>Current title</small><p>${escapeHtml(result.originalTitle)}</p></div><div class="arrow">→</div><div class="new-title"><small>Your upgraded title</small><p>${escapeHtml(result.newTitle)}</p></div></div><button class="primary-btn" type="button" id="unlock">Unlock full pack · $19 <span>→</span></button><p id="checkout-status" class="form-note" role="status"><span>✓</span> Full pack delivery to ${escapeHtml(email)} comes after checkout.</p><p class="audit-source"><strong>${escapeHtml(sourceLabel)}</strong> · ${escapeHtml(persistenceLabel)}<br />${escapeHtml(result.note || 'Free title generated from your product page.')}</p>`;
-  document.querySelector('#unlock').addEventListener('click', async () => {
-    const button = document.querySelector('#unlock');
-    const status = document.querySelector('#checkout-status');
-    button.disabled = true;
-    button.innerHTML = 'Opening secure checkout…';
-    try {
-      const response = await fetch('/api/dodo/checkout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ auditId: result.auditId, email }) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Checkout could not be started.');
-      window.location.href = payload.checkoutUrl;
-    } catch (error) {
-      button.disabled = false;
-      button.innerHTML = 'Unlock full pack · $19 <span>→</span>';
-      status.textContent = error.message || 'Checkout could not be started. Try again.';
-      status.classList.add('form-error');
-    }
-  });
+  const pack = result.fullPack;
+  const packHtml = pack ? `<section class="full-pack"><div class="pack-section"><small>Benefits-first bullets</small><ul>${(pack.bullets || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div><div class="pack-section"><small>FAQ draft</small><div class="faq-list">${(pack.faqs || []).map((item) => `<details><summary>${escapeHtml(item.question)}</summary><p>${escapeHtml(item.answer)}</p></details>`).join('')}</div></div><div class="pack-section"><small>Trust copy</small><p>${escapeHtml(pack.trustCopy || '')}</p></div><div class="pack-grid"><div><small>SEO meta title</small><p>${escapeHtml(pack.seo?.metaTitle || '')}</p></div><div><small>SEO description</small><p>${escapeHtml(pack.seo?.metaDescription || '')}</p></div></div><div class="pack-section"><small>Image recommendations</small><ul>${(pack.imageRecommendations || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div></section>` : '';
+  processing.innerHTML = `<p class="eyebrow success-label">Upgrade pack ready</p><h2>Same product.<br /><em>Sharper promise.</em></h2><div class="comparison"><div><small>Current title</small><p>${escapeHtml(result.originalTitle)}</p></div><div class="arrow">→</div><div class="new-title"><small>Your upgraded title</small><p>${escapeHtml(result.newTitle)}</p></div></div>${packHtml}<p class="form-note"><span>✓</span> Development preview generated for ${escapeHtml(email)}. Payment is currently deferred.</p><p class="audit-source"><strong>${escapeHtml(sourceLabel)}</strong> · ${escapeHtml(persistenceLabel)}<br />${escapeHtml(result.note || 'Upgrade pack generated from your product page.')}</p>`;
 }
 
 form.addEventListener('submit', async (event) => {
@@ -59,7 +44,7 @@ form.addEventListener('submit', async (event) => {
   const data = new FormData(form); const productUrl = String(data.get('url') || '').trim(); const email = String(data.get('email') || '').trim();
   if (!form.checkValidity()) { setError('Enter a valid product URL and email address.'); form.reportValidity(); return; }
   form.classList.add('hidden'); processing.classList.remove('hidden');
-  processing.innerHTML = '<div class="loader"><span></span><span></span><span></span></div><p class="eyebrow">Reading your page</p><h2>Finding the strongest<br /><em>way to say it.</em></h2><p class="muted">We’re extracting the current title. Competitor benchmarking runs when the Hermes audit service is configured.</p>';
+  processing.innerHTML = '<div class="loader"><span></span><span></span><span></span></div><p class="eyebrow">Reading your page</p><h2>Finding the strongest<br /><em>way to say it.</em></h2><p class="muted">We’re extracting the current title and comparing relevant product pages. Payment is not required in this development build.</p>';
   try {
     const response = await fetch('/api/audit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ productUrl, email }) });
     const raw = await response.text();

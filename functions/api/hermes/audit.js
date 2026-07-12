@@ -1,4 +1,4 @@
-import { createFreeTitle, extractPageTitle, validateAuditInput } from '../../../src/audit-core.js';
+import { createFreeTitle, createFullPack, extractPageTitle, validateAuditInput } from '../../../src/audit-core.js';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -67,6 +67,7 @@ async function linkupAudit(body, apiKey) {
     originalTitle,
     newTitle: createFreeTitle(originalTitle),
     competitors,
+    fullPack: createFullPack(originalTitle, competitors),
     source: 'linkup-benchmarked-fallback',
     note: competitors.length
       ? `Linkup found ${competitors.length} comparable product pages. Title uses the transparent fallback generator until HERMES_UPSTREAM_URL is configured.`
