@@ -1,0 +1,15 @@
+{
+  "name": "shopify-product-page-optimizer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && npx wrangler pages deploy dist --project-name shopify-product-page-optimizer"
+  },
+  "devDependencies": {
+    "vite": "^6.1.0"
+  }
+}
