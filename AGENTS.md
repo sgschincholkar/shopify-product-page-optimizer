@@ -11,7 +11,7 @@ The PRD is the product and integration source of truth. Do not replace its named
 
 ## Product goal
 
-Build a web app where a Shopify merchant submits a public product-page URL and email, receives a free improved title, and can later pay $19 for a complete competitor-benchmarked upgrade pack.
+Build a web app where a Shopify merchant submits a public product-page URL and email, receives a complete competitor-benchmarked upgrade pack on screen, and can later pay $19 for delivery/access in v2.
 
 The primary v1 path is:
 
@@ -20,8 +20,9 @@ The primary v1 path is:
 3. Hermes audit request.
 4. Product-page and competitor extraction.
 5. Free upgraded title result: original title versus new title.
-6. Dodo checkout for the paid full pack.
-7. Convex persistence, full-pack generation, and email delivery.
+6. Convex persistence and full-pack generation.
+
+Payment, paid access, Dodo checkout, payment webhooks, payment records, and email delivery are v2 only.
 
 No Shopify admin access or merchant secrets are required.
 
@@ -30,9 +31,9 @@ No Shopify admin access or merchant secrets are required.
 - Frontend: Vite static app, deployable to Cloudflare Pages.
 - Cloudflare API surface: `functions/api/`.
 - Audit execution: Hermes audit agent/server.
-- Storage: Convex functions and database.
-- Payment: Dodo one-time checkout, $19 per audit.
-- Email: backend-triggered full-pack delivery.
+- Storage: Convex functions and database for audit persistence; payment records are v2.
+- Payment: Dodo one-time checkout, $19 per audit, v2 only.
+- Email: backend-triggered full-pack delivery, v2 only.
 
 Keep integrations behind explicit seams. Demo fixtures and fallback title generation must be labeled as fallback/demo behavior. Never describe them as live Hermes, competitor analysis, Convex, Dodo, email, or deployment behavior.
 
@@ -42,11 +43,12 @@ The app currently has a fallback audit path that extracts a page title and gener
 
 ### Landing page
 
-- Hero explains the 90-second Shopify PDP upgrade promise.
+- Hero promises: `Find the gaps in your Shopify product page. Get the copy to fix them.`
+- Supporting copy explains the 3–5 competitor comparison and the SEO, conversion, trust, and buyer-objection gaps analyzed.
 - Required inputs: email and product URL.
-- Primary CTA: `Get free upgraded title`.
+- Primary CTA: `Analyze my product page`.
 - Show empty, validation, processing, success, and recoverable-error states.
-- Success state shows original title, upgraded title, and `Unlock full pack for $19`.
+- Success state shows original title, upgraded title, and the complete full pack.
 - Keep controls keyboard accessible with visible labels and focus states.
 - Preserve responsive behavior and reduced-motion support.
 
@@ -69,9 +71,9 @@ The real audit should:
 
 If competitor discovery fails, still generate a title from the original PDP and clearly record the fallback condition.
 
-### Paid work planned after the free path
+### V2 work planned after the payment-free v1 path
 
-Do not implement paid behavior as if it were live without credentials and verification. The planned contract is:
+Do not implement payment behavior in v1. When v2 begins, the planned contract is:
 
 - Dodo checkout linked to the audit ID through metadata or query parameters.
 - Verified Dodo webhook marks the audit paid and creates a payment record.
@@ -145,7 +147,25 @@ Never fabricate scraper results, competitor data, payment confirmations, Convex 
 <claude-mem-context>
 # Memory Context
 
-# [shopify-product-page-optimizer] recent context, 2026-07-12 3:01pm GMT+5:30
+# [shopify-product-page-optimizer] recent context, 2026-07-23 1:23am GMT+5:30
 
-No previous sessions found.
+Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
+Format: ID TIME TYPE TITLE
+Fetch details: get_observations([IDs]) | Search: mem-search skill
+
+Stats: 9 obs (3,824t read) | 53,356t work | 93% savings
+
+### Jul 17, 2026
+630 10:39p 🔵 Shopify Product Page Optimizer — V1 Build Status Snapshot
+631 " 🔵 Shopify Product Page Optimizer — Project Rules and Lessons
+632 " ⚖️ CEO Review Completed — V1 Wedge Redefined as Paste-Ready PDP Upgrade Pack
+634 10:40p ✅ CEO Review Changes Committed to Git
+### Jul 18, 2026
+637 5:35p 🔵 Codex task suggestion request for Shopify Product Page Optimizer project
+639 " 🔵 Shopify Product Page Optimizer — 3-commit git history confirms UI implementation complete
+640 " 🔵 Shopify Product Page Optimizer — detailed build state with 3 critical blockers identified
+641 " 🔵 Dodo checkout and webhook endpoints fully coded but blocked by 401 credential mismatch and unconfigured frontend redirect
+642 5:36p 🔵 Frontend "Unlock full pack" button missing — Dodo checkout call not wired in src/main.js
+
+Access 53k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>

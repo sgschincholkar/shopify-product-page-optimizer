@@ -16,6 +16,54 @@ function cleanText(value = '') {
   return String(value).replace(/\s+/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
 }
 
+function unique(values = []) {
+  return [...new Set(values.map((value) => cleanText(value)).filter(Boolean))];
+}
+
+function structuredObjects(value) {
+  if (Array.isArray(value)) return value.flatMap(structuredObjects);
+  if (!value || typeof value !== 'object') return [];
+  return [value, ...(Array.isArray(value['@graph']) ? value['@graph'].flatMap(structuredObjects) : [])];
+}
+
+function structuredString(value) {
+  if (typeof value === 'string') return cleanText(value);
+  if (value && typeof value === 'object') return cleanText(value.name || value['@id'] || '');
+  return '';
+}
+
+function findStructuredField(structuredData, field) {
+  for (const item of structuredObjects(structuredData)) {
+    const value = structuredString(item[field]);
+    if (value) return value;
+  }
+  return '';
+}
+
+function compact(value = '') {
+  return cleanText(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function brandTokens(brand = '') {
+  return cleanText(brand).toLowerCase().split(/[^a-z0-9]+/i).filter((token) => token.length > 2);
+}
+
+function inferProductType(title = '', brand = '') {
+  const productWords = /\b(coffee|tea|serum|cleanser|moisturizer|shampoo|conditioner|oil|supplement|protein|vitamin|candle|soap|snack|sauce|cream|powder|tincture|backpack|shoe|jacket)\b/i;
+  return title.split(/[|:/]+/u).map(cleanText).reverse().find((part) => productWords.test(part) && compact(part) !== compact(brand)) || '';
+}
+
+function inferSearchTerms({ title = '', description = '', headings = [], productType = '', brand = '' }) {
+  const sources = [productType, ...title.split(/[|:/–—-]+/u), ...headings.slice(0, 4)];
+  const benefitPhrases = cleanText(description).toLowerCase().match(/\b(?:high|low|organic|vegan|natural|premium|gentle|bold|smooth|fast|long[- ]lasting)\s+[a-z][a-z-]+/g) || [];
+  const excluded = new Set(['shopify', 'product', 'official', 'buy', 'shop', ...brandTokens(brand)]);
+  return unique([...sources, ...benefitPhrases])
+    .map((term) => term.toLowerCase())
+    .filter((term) => term.length >= 3 && !/\b(item added|cart|checkout|menu|search|account|login|quantity|add to)\b/i.test(term))
+    .filter((term) => !excluded.has(term) && !excluded.has(compact(term)))
+    .slice(0, 10);
+}
+
 export function extractPageTitle(html = '') {
   const candidates = [
     html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1],
@@ -48,7 +96,16 @@ export function extractPdpContext(html = '', productUrl = '') {
   for (const match of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     try { structuredData.push(JSON.parse(match[1])); } catch { /* malformed JSON-LD is ignored */ }
   }
-  return {
+  const structuredBrand = findStructuredField(structuredData, 'brand');
+  const brand = structuredBrand || meta('og:site_name') || meta('application-name') || (() => {
+    try {
+      return new URL(productUrl).hostname.replace(/^www\./i, '').split('.')[0].replace(/[-_]+/g, ' ');
+    } catch {
+      return '';
+    }
+  })();
+  const productType = findStructuredField(structuredData, 'category') || findStructuredField(structuredData, 'additionalType') || inferProductType(extractPageTitle(html), brand);
+  const context = {
     url: productUrl,
     title: extractPageTitle(html),
     description: description.slice(0, 1200),
@@ -57,7 +114,50 @@ export function extractPdpContext(html = '', productUrl = '') {
     bullets,
     images,
     structuredData: structuredData.slice(0, 5),
+    brand,
+    productType,
   };
+  return {
+    ...context,
+    searchTerms: inferSearchTerms(context),
+  };
+}
+
+export function buildCompetitorQueries(pdpContext = {}, input = {}) {
+  const brand = compact(pdpContext.brand);
+  const hint = cleanText(input.verticalHint || '').toLowerCase();
+  const category = hint || cleanText(pdpContext.productType || '').toLowerCase() || cleanText(pdpContext.searchTerms?.[0] || '').toLowerCase();
+  const terms = unique([category, ...(pdpContext.searchTerms || [])])
+    .map((term) => term.toLowerCase())
+    .filter((term) => term && compact(term) !== brand)
+    .slice(0, 4);
+  const brandPattern = cleanText(pdpContext.brand).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const stripBrand = (query) => query
+    .replace(new RegExp(brandPattern, 'ig'), '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return unique([
+    `${terms.slice(0, 3).join(' ')} competitors`,
+    `${category} Shopify product page competitors`,
+    `${terms.slice(0, 3).join(' ')} product page`,
+  ].map(stripBrand).filter(Boolean)).slice(0, 3);
+}
+
+export function filterCompetitorResults(results = [], pdpContext = {}, productUrl = '') {
+  let merchantHost = '';
+  try { merchantHost = new URL(productUrl || pdpContext.url).hostname.replace(/^www\./i, '').toLowerCase(); } catch { /* invalid URLs are discarded below */ }
+  const tokens = brandTokens(pdpContext.brand);
+  const seen = new Set();
+  return results.filter((item) => {
+    let url;
+    try { url = new URL(item.url).toString(); } catch { return false; }
+    const host = new URL(url).hostname.replace(/^www\./i, '').toLowerCase();
+    const titleTokens = brandTokens(item.title);
+    const isMerchantBrand = tokens.length > 0 && tokens.every((token) => titleTokens.includes(token));
+    if (host === merchantHost || isMerchantBrand || seen.has(url)) return false;
+    seen.add(url);
+    return true;
+  });
 }
 
 export function createFreeTitle(originalTitle) {
@@ -111,17 +211,27 @@ function firstValue(...values) {
   return values.find((value) => value !== undefined && value !== null && String(value).trim() !== '');
 }
 
+function arrayValue(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 export function normalizeHermesResult(payload = {}, input = {}) {
   const originalTitle = cleanText(firstValue(payload.originalTitle, payload.original_title, payload.shopify_original_title));
   const newTitle = cleanText(firstValue(payload.newTitle, payload.new_title, payload.shopify_title));
   if (!originalTitle || !newTitle) throw new Error('The Hermes audit returned an incomplete title result.');
-  const competitors = Array.isArray(payload.competitors) ? payload.competitors : [];
+  const competitors = arrayValue(payload.competitors);
   return {
     auditId: firstValue(payload.auditId, payload.audit_id) || crypto.randomUUID(),
     productUrl: input.productUrl,
     originalTitle: originalTitle.slice(0, TITLE_LIMIT),
     newTitle: newTitle.slice(0, TITLE_LIMIT),
     competitors,
+    discoveryQueries: arrayValue(payload.discoveryQueries || payload.discovery_queries),
+    competitorGaps: arrayValue(payload.competitorGaps || payload.competitor_gaps),
+    evidence: arrayValue(payload.evidence),
+    claimWarnings: arrayValue(payload.claimWarnings || payload.claim_warnings),
+    limitations: arrayValue(payload.limitations),
+    analysisMode: firstValue(payload.analysisMode, payload.analysis_mode) || null,
     pdpContext: payload.pdpContext || payload.pdp_context || null,
     fullPack: payload.fullPack || payload.full_pack || null,
     source: firstValue(payload.source, payload.auditSource) || 'hermes',
@@ -152,6 +262,12 @@ async function persistAudit(fetchImpl, convexAuditUrl, result, input) {
       originalTitle: result.originalTitle,
       newTitle: result.newTitle,
       competitors: result.competitors,
+      discoveryQueries: result.discoveryQueries || [],
+      competitorGaps: result.competitorGaps || [],
+      evidence: result.evidence || [],
+      claimWarnings: result.claimWarnings || [],
+      limitations: result.limitations || [],
+      analysisMode: result.analysisMode || undefined,
       fullPackJson: result.fullPack || undefined,
     },
   };
@@ -188,6 +304,12 @@ async function fallbackAudit(fetchImpl, input, reason = '') {
     pdpContext,
     newTitle: createFreeTitle(originalTitle),
     competitors: [],
+    discoveryQueries: [],
+    competitorGaps: [],
+    evidence: [],
+    claimWarnings: [],
+    limitations: reason ? [reason] : [],
+    analysisMode: 'merchant-only-fallback',
     fullPack: createFullPack(originalTitle, []),
     source: 'fallback',
     mode: 'fallback',
@@ -224,6 +346,12 @@ export async function runAudit(body, { fetchImpl = fetch, hermesAuditUrl = '', c
     ...(stored?.newTitle ? { newTitle: stored.newTitle } : {}),
     ...(stored?.fullPackJson ? { fullPack: stored.fullPackJson } : {}),
     ...(Array.isArray(stored?.competitors) ? { competitors: stored.competitors } : {}),
+    ...(Array.isArray(stored?.discoveryQueries) ? { discoveryQueries: stored.discoveryQueries } : {}),
+    ...(Array.isArray(stored?.competitorGaps) ? { competitorGaps: stored.competitorGaps } : {}),
+    ...(Array.isArray(stored?.evidence) ? { evidence: stored.evidence } : {}),
+    ...(Array.isArray(stored?.claimWarnings) ? { claimWarnings: stored.claimWarnings } : {}),
+    ...(Array.isArray(stored?.limitations) ? { limitations: stored.limitations } : {}),
+    ...(stored?.analysisMode ? { analysisMode: stored.analysisMode } : {}),
     persistence,
   };
 }

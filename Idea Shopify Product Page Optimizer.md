@@ -16,7 +16,7 @@ How to build it, step by step
 6. Keep Convex read access to the audits and payments tables open so you can verify every signup and paid audit on demand.  
 7. Add store brand-voice memory and the one-click Shopify-field export once the first audit sells.  
 8. Collect proof continuously: screenshot each paid audit and any owner who ships the new copy to their live store.  
-9. Rehearse the demo: pull a founder's real PDP and 3 rivals, generate the pack in 90 seconds, take a live $19 payment, and end on the Dodo dashboard.
+9. Rehearse the v1 demo: pull a founder's real PDP and 3 rivals, generate the pack, and show the paste-ready result. Payment is deferred to v2.
 
 Who this is for
 
@@ -49,7 +49,7 @@ Partner power-ups
 
 Your demo moment
 
-Paste a real Shopify PDP from a founder in the room, watch the browser agent pull it and 3 competitors, generate the upgrade pack in 90 seconds, the buyer pays $19 via Dodo on stage, end on the Dodo dashboard with the day's paid audits.
+Paste a real Shopify PDP from a founder in the room, watch the browser agent pull it and 3 competitors, generate the competitor-backed upgrade pack, and end with a paste-ready result. Dodo payment is a v2 demo.
 
 Deploy and proof
 
@@ -64,4 +64,3 @@ One store owner pays for an audit.
 Scoring note
 
 Clear ROI for D2C brands.
-

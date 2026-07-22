@@ -1,4 +1,4 @@
-import { createFreeTitle, createFullPack, extractPdpContext, extractPageTitle, validateAuditInput } from '../../../src/audit-core.js';
+import { buildCompetitorQueries, createFreeTitle, createFullPack, extractPdpContext, extractPageTitle, filterCompetitorResults, validateAuditInput } from '../../../src/audit-core.js';
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -29,39 +29,32 @@ async function linkupCompetitors(input, apiKey) {
   const html = await productPage.text();
   const pdpContext = extractPdpContext(html, input.productUrl);
   const originalTitle = pdpContext.title;
-  const query = `${originalTitle} ${input.verticalHint || ''} product page competitors Shopify`.trim();
-  const linkupResponse = await fetchWithTimeout('https://api.linkup.so/v1/search', {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ q: query, depth: 'standard', outputType: 'searchResults' }),
-  }, 30_000);
-  if (!linkupResponse.ok) throw new Error(`Linkup returned HTTP ${linkupResponse.status}.`);
-  const payload = await linkupResponse.json();
-  const origin = new URL(input.productUrl).hostname.replace(/^www\./, '').toLowerCase();
-  const competitors = (Array.isArray(payload.results) ? payload.results : [])
-    .map((item) => ({
+  const discoveryQueries = buildCompetitorQueries(pdpContext, input);
+  const responses = await Promise.all(discoveryQueries.map(async (query) => {
+    const linkupResponse = await fetchWithTimeout('https://api.linkup.so/v1/search', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ q: query, depth: 'standard', outputType: 'searchResults' }),
+    }, 30_000);
+    if (!linkupResponse.ok) throw new Error(`Linkup returned HTTP ${linkupResponse.status}.`);
+    const payload = await linkupResponse.json();
+    return (Array.isArray(payload.results) ? payload.results : []).map((item) => ({
       title: clean(item.name || item.title || ''),
       url: clean(item.url || item.link || ''),
       snippet: clean(item.content || item.snippet || item.description || '').slice(0, 500),
-    }))
-    .filter((item) => {
-      try {
-        const hostname = new URL(item.url).hostname.replace(/^www\./, '').toLowerCase();
-        return item.url && hostname && hostname !== origin;
-      } catch {
-        return false;
-      }
-    })
-    .slice(0, 5);
-  return { originalTitle, pdpContext, competitors };
+      query,
+    }));
+  }));
+  const competitors = filterCompetitorResults(responses.flat(), pdpContext, input.productUrl).slice(0, 5);
+  return { originalTitle, pdpContext, competitors, discoveryQueries };
 }
 
 async function linkupAudit(body, apiKey) {
   const input = validateAuditInput(body);
-  const { originalTitle, pdpContext, competitors } = await linkupCompetitors(input, apiKey);
+  const { originalTitle, pdpContext, competitors, discoveryQueries } = await linkupCompetitors(input, apiKey);
   return {
     auditId: crypto.randomUUID(),
     productUrl: input.productUrl,
@@ -69,6 +62,7 @@ async function linkupAudit(body, apiKey) {
     pdpContext,
     newTitle: createFreeTitle(originalTitle),
     competitors,
+    discoveryQueries,
     fullPack: createFullPack(originalTitle, competitors),
     source: 'linkup-benchmarked-fallback',
     note: competitors.length
