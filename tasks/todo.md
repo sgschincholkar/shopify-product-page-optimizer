@@ -151,6 +151,13 @@ Proof target:
 - [ ] Verify production Hermes output, Linkup discovery, Convex persistence, browser rendering, and fallback behavior
 - [ ] Update README and this checklist with the production URL and verified live status
 
+### V1 product usability improvement — July 24, 2026
+
+- [x] Add copy controls for the upgraded title, description, bullets, FAQs, trust copy, SEO fields, and keywords
+- [x] Add clipboard fallback for browsers that block the Clipboard API
+- [x] Add structural test coverage for the copy controls
+- [ ] Verify copy controls in the deployed browser flow
+
 ### Remaining full build
 
 - [x] Add Convex audit persistence; payment records remain v2

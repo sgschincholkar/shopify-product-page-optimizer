@@ -2,6 +2,8 @@ import './style.css';
 
 const app = document.querySelector('#app');
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+const copyPayloads = new Map();
+let copyId = 0;
 
 app.innerHTML = `
   <header class="nav shell">
@@ -30,8 +32,14 @@ const form = document.querySelector('#audit-form');
 const processing = document.querySelector('#processing');
 const formError = document.querySelector('#form-error');
 const setError = (message) => { formError.textContent = message; formError.classList.toggle('hidden', !message); };
+const copyControl = (value, label) => {
+  const id = `copy-${++copyId}`;
+  copyPayloads.set(id, String(value || ''));
+  return `<button class="copy-btn" type="button" data-copy-id="${id}" aria-label="Copy ${escapeHtml(label)}" title="Copy ${escapeHtml(label)}">Copy</button>`;
+};
 
 function showResult(result, email) {
+  copyPayloads.clear();
   const sourceLabel = result.mode === 'hermes' || result.source === 'hermes' ? 'Hermes-generated output' : result.source === 'linkup-benchmarked-fallback' ? 'Linkup competitor preview' : 'Fallback title preview';
   const persistenceLabel = result.persistence?.status === 'saved' ? 'Audit saved' : result.persistence?.status === 'failed' ? 'Audit result ready; save is pending' : 'Preview only';
   const pack = result.fullPack;
@@ -43,9 +51,33 @@ function showResult(result, email) {
   const warningHtml = claimWarnings.length ? `<div class="pack-section proof-section"><small>Claims to verify</small><ul>${claimWarnings.slice(0, 5).map((item) => `<li><strong>${escapeHtml(item.proposedClaim || 'Claim')}</strong>${item.reason ? `<br />${escapeHtml(item.reason)}` : ''}${item.proofNeeded ? `<br /><span>Proof needed: ${escapeHtml(item.proofNeeded)}</span>` : ''}</li>`).join('')}</ul></div>` : '';
   const limitationHtml = limitations.length ? `<div class="pack-section proof-section"><small>Audit limitations</small><ul>${limitations.slice(0, 5).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>` : '';
   const queryHtml = discoveryQueries.length ? `<div class="pack-section proof-section"><small>Competitor searches used</small><ul>${discoveryQueries.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>` : '';
-  const packHtml = pack ? `<section class="full-pack"><div class="pack-section"><small>Product description</small><p>${escapeHtml(pack.description || '')}</p></div><div class="pack-section"><small>Benefits-first bullets</small><ul>${(pack.bullets || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div><div class="pack-section"><small>FAQ draft</small><div class="faq-list">${(pack.faqs || []).map((item) => `<details><summary>${escapeHtml(item.question)}</summary><p>${escapeHtml(item.answer)}</p></details>`).join('')}</div></div><div class="pack-section"><small>Trust copy</small><p>${escapeHtml(pack.trustCopy || '')}</p></div><div class="pack-grid"><div><small>SEO meta title</small><p>${escapeHtml(pack.seo?.metaTitle || '')}</p></div><div><small>SEO description</small><p>${escapeHtml(pack.seo?.metaDescription || '')}</p></div></div><div class="pack-section"><small>Search keywords</small><p>${(pack.seo?.keyTerms || []).map((item) => escapeHtml(item)).join(', ')}</p></div><div class="pack-section"><small>Image recommendations</small><ul>${(pack.imageRecommendations || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div></section>` : '';
-  processing.innerHTML = `<p class="eyebrow success-label">Upgrade pack ready</p><h2>Same product.<br /><em>Sharper promise.</em></h2><div class="comparison"><div><small>Current title</small><p>${escapeHtml(result.originalTitle)}</p></div><div class="arrow">→</div><div class="new-title"><small>Your upgraded title</small><p>${escapeHtml(result.newTitle)}</p></div></div>${gapHtml}${packHtml}${warningHtml}${limitationHtml}${queryHtml}<p class="form-note"><span>✓</span> Payment-free v1 audit generated for ${escapeHtml(email)}. The complete pack is ready to use.</p><p class="audit-source"><strong>${escapeHtml(sourceLabel)}</strong> · ${escapeHtml(persistenceLabel)}${result.analysisMode ? ` · ${escapeHtml(result.analysisMode)}` : ''}<br />${escapeHtml(result.note || 'Upgrade pack generated from your product page.')}</p>`;
+  const faqCopy = (pack?.faqs || []).map((item) => `Q: ${item.question}\nA: ${item.answer}`).join('\n\n');
+  const packHtml = pack ? `<section class="full-pack"><div class="pack-section"><div class="pack-heading"><small>Product description</small>${copyControl(pack.description, 'product description')}</div><p>${escapeHtml(pack.description || '')}</p></div><div class="pack-section"><div class="pack-heading"><small>Benefits-first bullets</small>${copyControl((pack.bullets || []).map((item) => `- ${item}`).join('\n'), 'benefit bullets')}</div><ul>${(pack.bullets || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div><div class="pack-section"><div class="pack-heading"><small>FAQ draft</small>${copyControl(faqCopy, 'FAQs')}</div><div class="faq-list">${(pack.faqs || []).map((item) => `<details><summary>${escapeHtml(item.question)}</summary><p>${escapeHtml(item.answer)}</p></details>`).join('')}</div></div><div class="pack-section"><div class="pack-heading"><small>Trust copy</small>${copyControl(pack.trustCopy, 'trust copy')}</div><p>${escapeHtml(pack.trustCopy || '')}</p></div><div class="pack-grid"><div><div class="pack-heading"><small>SEO meta title</small>${copyControl(pack.seo?.metaTitle, 'SEO meta title')}</div><p>${escapeHtml(pack.seo?.metaTitle || '')}</p></div><div><div class="pack-heading"><small>SEO description</small>${copyControl(pack.seo?.metaDescription, 'SEO meta description')}</div><p>${escapeHtml(pack.seo?.metaDescription || '')}</p></div></div><div class="pack-section"><div class="pack-heading"><small>Search keywords</small>${copyControl((pack.seo?.keyTerms || []).join(', '), 'search keywords')}</div><p>${(pack.seo?.keyTerms || []).map((item) => escapeHtml(item)).join(', ')}</p></div><div class="pack-section"><small>Image recommendations</small><ul>${(pack.imageRecommendations || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div></section>` : '';
+  processing.innerHTML = `<p class="eyebrow success-label">Upgrade pack ready</p><h2>Same product.<br /><em>Sharper promise.</em></h2><div class="comparison"><div><small>Current title</small><p>${escapeHtml(result.originalTitle)}</p></div><div class="arrow">→</div><div class="new-title"><div class="pack-heading"><small>Your upgraded title</small>${copyControl(result.newTitle, 'upgraded title')}</div><p>${escapeHtml(result.newTitle)}</p></div></div>${gapHtml}${packHtml}${warningHtml}${limitationHtml}${queryHtml}<p class="form-note"><span>✓</span> Payment-free v1 audit generated for ${escapeHtml(email)}. The complete pack is ready to use.</p><p class="audit-source"><strong>${escapeHtml(sourceLabel)}</strong> · ${escapeHtml(persistenceLabel)}${result.analysisMode ? ` · ${escapeHtml(result.analysisMode)}` : ''}<br />${escapeHtml(result.note || 'Upgrade pack generated from your product page.')}</p>`;
 }
+
+processing.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-copy-id]');
+  if (!button) return;
+  const value = copyPayloads.get(button.dataset.copyId) || '';
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch {
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.append(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    textarea.remove();
+  }
+  const original = button.textContent;
+  button.textContent = 'Copied';
+  button.classList.add('copied');
+  setTimeout(() => { button.textContent = original; button.classList.remove('copied'); }, 1400);
+});
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault(); setError('');

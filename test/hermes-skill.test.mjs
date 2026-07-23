@@ -82,3 +82,11 @@ test('full pack renderer exposes description and keyword outputs', async () => {
   assert.match(main, /pack\.description/);
   assert.match(main, /pack\.seo\?\.keyTerms/);
 });
+
+test('full pack renderer exposes copy controls for generated Shopify copy', async () => {
+  const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(main, /data-copy-id/);
+  assert.match(main, /navigator\.clipboard\.writeText/);
+  assert.match(main, /copyControl\(pack\.description/);
+});
