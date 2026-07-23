@@ -6,6 +6,7 @@ import { buildCompetitorQueries, extractPdpContext, filterCompetitorResults, val
 
 const execFileAsync = promisify(execFile);
 const PORT = Number(process.env.PORT || 8787);
+const HOST = process.env.HOST || '0.0.0.0';
 const TIMEOUT_MS = 110_000;
 
 function loadEnvFile(path = '.env.local') {
@@ -122,6 +123,9 @@ async function runHermes(input, pdpContext, competitors, discoveryQueries) {
 }
 
 async function handle(req, res) {
+  if (req.method === 'GET' && req.url === '/health') {
+    return send(res, 200, { ok: true, service: 'hermes-audit-adapter' });
+  }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed.' });
   const expectedToken = process.env.HERMES_UPSTREAM_TOKEN;
   if (expectedToken) {
@@ -142,6 +146,6 @@ async function handle(req, res) {
   });
 }
 
-http.createServer(handle).listen(PORT, '127.0.0.1', () => {
-  console.log(`Hermes audit adapter listening on http://127.0.0.1:${PORT}`);
+http.createServer(handle).listen(PORT, HOST, () => {
+  console.log(`Hermes audit adapter listening on http://${HOST}:${PORT}`);
 });

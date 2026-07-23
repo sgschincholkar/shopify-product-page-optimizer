@@ -37,7 +37,7 @@ No Shopify admin access or merchant secrets are required.
 
 Keep integrations behind explicit seams. Demo fixtures and fallback title generation must be labeled as fallback/demo behavior. Never describe them as live Hermes, competitor analysis, Convex, Dodo, email, or deployment behavior.
 
-The app currently has a fallback audit path that extracts a page title and generates a heuristic title. The next implementation work must replace or extend this with the real Hermes-backed free-audit path without removing graceful fallback behavior.
+The app has both a real Hermes-backed audit path and a fallback path that extracts a page title and generates a heuristic title. Preserve graceful fallback behavior while production configuration is completed.
 
 ## Required v1 behavior
 
@@ -147,7 +147,7 @@ Never fabricate scraper results, competitor data, payment confirmations, Convex 
 <claude-mem-context>
 # Memory Context
 
-# [shopify-product-page-optimizer] recent context, 2026-07-23 1:23am GMT+5:30
+# [shopify-product-page-optimizer] recent context, 2026-07-23 6:39pm GMT+5:30
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE

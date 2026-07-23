@@ -19,7 +19,7 @@ We compare the merchant's page with 3–5 relevant competitors, uncover SEO, con
 Ship a working web app and Hermes agent that can:
 
 1. Accept a URL and email,
-2. Show a **free upgraded title** instantly,
+2. Show a **free upgraded title** after the audit completes,
 3. Generate and show the **full upgrade pack** on screen without payment,
 4. Run this end-to-end on real Shopify PDPs.
 
@@ -40,7 +40,7 @@ Payments, paid access, payment webhooks, and email delivery are explicitly defer
 ## **Primary use case**
 
 * Priya pastes her **bestseller PDP URL** and her email.
-* She clicks “Get free upgraded title.”
+* She clicks “Analyze my product page.”
 * The app shows a better title, benchmarked against 3–5 competitors.
 * She immediately receives a full upgrade pack on screen with:
   * Title, bullets, FAQ, trust copy, SEO fields, images-to-add suggestions.

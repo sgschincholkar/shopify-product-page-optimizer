@@ -75,3 +75,10 @@ test('Hermes adapter preloads the skill and requests the expanded contract', asy
   assert.match(adapter, /competitorGaps/);
   assert.match(adapter, /claimWarnings/);
 });
+
+test('full pack renderer exposes description and keyword outputs', async () => {
+  const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+
+  assert.match(main, /pack\.description/);
+  assert.match(main, /pack\.seo\?\.keyTerms/);
+});

@@ -9,7 +9,7 @@ No Shopify app install, theme edits, or admin access needed. Everything runs off
 ## How it works
 
 1. A merchant lands on the single-page app and enters their **email** and **product page URL**.
-2. The app calls `POST /api/audit`, which runs a free title-only audit and shows **original title vs. upgraded title** side by side.
+2. The app calls `POST /api/audit`, which extracts the PDP, discovers relevant competitor candidates, and shows **original title vs. upgraded title** side by side.
 3. Hermes generates and shows the **full upgrade pack** on screen.
 4. The audit and result are stored in Convex when configured.
 
@@ -23,7 +23,7 @@ This is a v1 build in progress. Honest breakdown of what's live vs. planned:
 |---|---|
 | Landing page (hero, form, processing/success/error states) | ✅ Built |
 | Free audit API with title extraction + heuristic rewrite fallback | ✅ Built |
-| Hermes audit proxy endpoint (`/api/hermes/audit`) | ✅ Built (needs `HERMES_UPSTREAM_URL` configured) |
+| Hermes audit proxy endpoint (`/api/hermes/audit`) | ✅ Built (production URL still needs configuration) |
 | Dodo checkout and webhook | ⏭️ V2 only |
 | Hermes agent doing real competitor discovery + benchmarked full packs | ✅ Verified locally with Linkup, 5 competitors, proof fields, and claim warnings |
 | Convex audit persistence (`stores`, `audits`) | ✅ Verified on the development deployment |
@@ -61,7 +61,7 @@ Dodo checkout → signed webhook → paid audit state → email delivery
 
 - **Frontend:** Vanilla JS + [Vite](https://vitejs.dev/), single-page static app. No framework.
 - **API:** [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/) under `functions/api/`. In local dev, the same handler is mounted at `/api/audit` by a Vite middleware plugin (`vite.config.js`), so frontend and API share one dev server.
-- **Audit engine:** Hermes agent (an adapter fetches the public PDP, extracts brand/category/search signals, runs focused Linkup searches, and passes the evidence to Hermes for the upgrade). Proxied through `/api/hermes/audit`.
+- **Audit engine:** Hermes agent running through a permanent Node adapter. The adapter fetches the public PDP, extracts brand/category/search signals, runs focused Linkup searches, and invokes `hermes chat --skills shopify-pdp-upgrade-audit`. Cloudflare Pages proxies requests to it through `/api/hermes/audit`.
 - **Storage:** [Convex](https://www.convex.dev/) — audit persistence in v1; payment records are v2.
 - **Payments:** [Dodo Payments](https://dodopayments.com/) one-time $19 checkout, v2 only.
 - **Hosting:** Cloudflare Pages (`wrangler.toml`, build output in `dist/`).
@@ -96,7 +96,7 @@ npm install
 npm run dev        # Vite dev server with /api/audit mounted locally
 ```
 
-Open the printed localhost URL, paste any public Shopify product URL and an email, and you'll get a fallback title rewrite immediately with no external services. Configure `HERMES_AUDIT_URL` and `CONVEX_AUDIT_URL` for the live Hermes + Convex V1 path.
+Open the printed localhost URL, paste any public Shopify product URL and an email, and you'll get a fallback title rewrite with no external services. Configure `HERMES_AUDIT_URL` and `CONVEX_AUDIT_URL` for the live Hermes + Convex V1 path.
 
 Other scripts:
 
@@ -121,13 +121,33 @@ All integrations are optional and gated behind environment variables. With nothi
 
 **Cloudflare Pages / wrangler dev** — copy `.dev.vars.example` to `.dev.vars` locally, and set the v1 Hermes, Linkup, and Convex variables in the Pages project settings for production. Dodo and email secrets are v2 only.
 
+### Production Hermes host
+
+Cloudflare Pages cannot run the current Hermes CLI because the CLI is a local subprocess with a Hermes installation and installed Hermes skills. Keep the Pages site and API functions on Cloudflare, and run `scripts/hermes-audit-server.mjs` on a permanent Node host.
+
+The host must provide Node.js, the `hermes` executable on `PATH`, and the `shopify-pdp-upgrade-audit` skill installed in its Hermes profile. Set `LINKUP_API_KEY`, optionally set `HERMES_UPSTREAM_TOKEN`, and start the service with:
+
+```bash
+npm run hermes:adapter
+```
+
+Set `HOST=0.0.0.0`; the host supplies `PORT`. The repository includes `Dockerfile.hermes` and `render.yaml` for a Render web service. Verify `GET /health`, then set Cloudflare's `HERMES_UPSTREAM_URL` to the host's HTTPS URL. This is a backend runtime service, not a second customer-facing app.
+
+The Hermes model provider credentials must also be added to the host using the provider's supported environment variables or Hermes configuration. Do not commit those credentials or copy the local Hermes profile into the repository.
+
+```text
+Browser -> Cloudflare Pages /api/audit -> /api/hermes/audit
+        -> permanent Hermes Node host -> scrape + Linkup -> hermes chat + skill
+        -> Cloudflare -> Convex persistence -> browser full pack
+```
+
 Never commit `.env`, `.env.local`, or `.dev.vars` — they're gitignored.
 
 ## API
 
 ### `POST /api/audit`
 
-Free title audit.
+Payment-free V1 audit.
 
 **Request**
 
@@ -152,7 +172,7 @@ Free title audit.
   "claimWarnings": [],
   "limitations": [],
   "analysisMode": "merchant-only-fallback | limited-competitor | full-competitor",
-  "source": "hermes | page-title-fallback",
+  "source": "hermes | fallback",
   "note": "…",
   "persistence": { "status": "saved | failed | not_configured" }
 }
@@ -170,9 +190,8 @@ The Dodo payment webhook remains isolated for v2. It is not part of the v1 runti
 
 ## Roadmap (from the PRD)
 
-- [ ] Real production Hermes audit: PDP extraction, 3–5 competitor discovery, benchmarked full pack
-- [ ] Production Convex audit persistence
-- [ ] End-to-end production test with a public Shopify PDP
+- [ ] Deploy the verified V1 path to Cloudflare Pages with production Hermes, Linkup, and Convex variables
+- [ ] Run and document an end-to-end production test with a public Shopify PDP
 - [ ] V2: Dodo checkout, payment webhook, payment records, and email delivery
 - [ ] Later: repeat-user brand memory, founder dashboard, basic analytics
 

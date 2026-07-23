@@ -37,3 +37,7 @@
 
 - A title-only competitor query loses the strongest discovery signals. Extract brand/category/search terms first, use the brand for exclusion rather than search intent, and keep the exact query list as evidence.
 - Do not remove individual brand tokens from queries: shared words such as `coffee` can be both a brand token and the actual product category. Remove the full brand phrase instead.
+- Keep the task checklist synchronized with the actual browser contract: generated description and keywords are not complete V1 deliverables until they are rendered in the result screen, and local verification must remain distinct from production deployment.
+- A Cloudflare Pages deployment can be healthy while the audit still falls back: production requires a permanent, reachable Hermes host. Account-less quick tunnels are suitable only for experiments and are not reliable production upstreams.
+- Keep Hermes as the runtime operator: Cloudflare Pages is the web/API edge, while a permanent Node host runs the Hermes CLI, installed skills, scraping, and Linkup orchestration. Moving everything into a Worker would require replacing `hermes chat` with a model API and would change the runtime rather than simplify this product.
+- A permanent Hermes host must provision three separate things: the adapter process, the version-controlled Hermes skill, and Hermes model-provider credentials. Linkup and the upstream bearer token are separate service secrets.

@@ -40,7 +40,7 @@
 
 - [x] Re-evaluate the offer with `plan-ceo-review` in scope-reduction mode
 - [x] Confirm the wedge is not "competitor benchmarking only"; the wedge is a paste-ready PDP upgrade pack backed by competitor evidence
-- [x] Keep SEO metadata, keywords, description, bullets, FAQs, and trust/objection fixes in the paid deliverable because competitors already offer SEO/copy outputs
+- [x] Keep SEO metadata, keywords, description, bullets, FAQs, and trust/objection fixes in the full-pack deliverable because competitors already offer SEO/copy outputs
 - [x] Treat competitor benchmarking as the proof layer and differentiator, not the only output
 
 ### Tight v1 spec — prove the payment-free product loop
@@ -55,24 +55,24 @@ Supporting copy:
 
 Free preview:
 
-- [ ] User submits email and one public Shopify product URL
-- [ ] App extracts the current PDP title and core page context
-- [ ] App discovers 3-5 relevant competitor PDPs when configured tools are available
-- [ ] App shows original title, upgraded title, and 2-3 competitor-backed gaps
-- [ ] If competitor discovery fails, app still returns a title and clearly labels the fallback condition
+- [x] User submits email and one public Shopify product URL
+- [x] App extracts the current PDP title and core page context
+- [x] App discovers up to 5 candidate competitor PDPs when configured tools are available
+- [x] App shows original title, upgraded title, and competitor-backed gaps when evidence supports them
+- [x] If competitor discovery fails, app still returns a title and clearly labels the fallback condition
 
 Full pack shown in v1:
 
-- [ ] Improved Shopify product title
-- [ ] Conversion-focused product description
-- [ ] 5-7 benefits-first bullets
-- [ ] SEO meta title and meta description
-- [ ] 5-10 FAQs based on likely buyer objections
-- [ ] 5-10 keyword/search phrases
-- [ ] Evidence-backed trust and objection fixes
-- [ ] Image suggestions derived from competitor norms
-- [ ] Legal-supportability disclaimer for every suggested claim or trust marker
-- [ ] Copy-paste-ready Shopify blocks
+- [x] Improved Shopify product title
+- [x] Conversion-focused product description
+- [x] 5-7 benefits-first bullets
+- [x] SEO meta title and meta description
+- [x] 5-10 FAQs based on likely buyer objections
+- [x] 5-10 keyword/search phrases
+- [x] Evidence-backed trust and objection fixes
+- [x] Image suggestions derived from competitor norms
+- [x] Legal-supportability disclaimer for every suggested claim or trust marker
+- [x] Copy-paste-ready Shopify blocks
 
 V2 only:
 
@@ -135,6 +135,22 @@ Proof target:
 - [x] Test and build the improved discovery path
 - [ ] Re-run the production Cloudflare path after deployment configuration
 
+### Remaining V1 release steps
+
+- [x] Authenticate Wrangler for the Cloudflare Pages project
+- [x] Deploy the Vite app and Pages Functions to Cloudflare Pages
+- [x] Configure production `LINKUP_API_KEY` and `CONVEX_AUDIT_URL`
+- [x] Verify the production fallback path against a public Shopify PDP
+- [x] Confirm temporary quick tunnels are not suitable as the Hermes production upstream
+- [ ] Provision a permanent Node host with Hermes CLI and the installed `shopify-pdp-upgrade-audit` skill
+- [x] Add a Docker deployment image and Render Blueprint for the Hermes adapter
+- [ ] Configure the host's `LINKUP_API_KEY`, `HERMES_UPSTREAM_TOKEN` if used, and `HOST=0.0.0.0`
+- [ ] Verify the host `GET /health` endpoint and `POST /` audit endpoint
+- [ ] Configure production `HERMES_UPSTREAM_URL` to the permanent host
+- [ ] Run `/api/audit` against a public Shopify PDP in production and confirm `source: hermes`
+- [ ] Verify production Hermes output, Linkup discovery, Convex persistence, browser rendering, and fallback behavior
+- [ ] Update README and this checklist with the production URL and verified live status
+
 ### Remaining full build
 
 - [x] Add Convex audit persistence; payment records remain v2
@@ -158,8 +174,6 @@ Proof target:
 - [x] Add payment-free full-pack screen
 - [x] Return the Convex-stored title, competitors, and full pack in the audit response
 - [ ] V2: Add email delivery after payment
-- [ ] Deploy to Cloudflare Pages and configure v1 production secrets
-- [ ] Run production end-to-end demo on a public Shopify PDP
 - [x] Run local real end-to-end demo on a public Shopify PDP
 - [ ] V2: Verify Dodo dashboard shows a live payment
 
@@ -183,6 +197,7 @@ Proof target:
   "originalTitle": "Current product title",
   "newTitle": "Improved product title",
   "competitors": [],
+  "discoveryQueries": [],
   "competitorGaps": [],
   "evidence": [],
   "claimWarnings": [],
@@ -240,9 +255,12 @@ The persistence call must not block a usable fallback result if Convex is unavai
 - [x] Updated the runtime adapter to preload the skill and request its expanded evidence-backed contract.
 - [x] Local V1 E2E verification on `https://www.deathwishcoffee.com/products/death-wish-coffee` returned `source: hermes`, `mode: hermes`, `persistence: saved`, 5 competitors, a full pack, competitor gaps, evidence, claim warnings, limitations, and `analysisMode: limited-competitor`.
 - [x] Browser verification on `http://127.0.0.1:8791/` rendered competitor gaps, claims to verify, audit limitations, Hermes output label, and saved status with no console warnings/errors and no horizontal overflow.
+- [x] Browser verification rendered the generated product description, SEO keywords, and exact Linkup discovery queries.
+- [x] Production Cloudflare check returned HTTP 200 with fallback full pack and Convex persistence on the Death Wish Coffee PDP.
+- [x] Confirmed production Hermes proxy cannot be called until a permanent public Hermes host is configured; temporary quick-tunnel URLs were removed after returning HTTP 530/ENOTFOUND.
 
 - [x] CEO review completed July 17, 2026: use scope reduction for v1. The product should prove that one no-install Shopify PDP audit can convert from a useful free preview into a $19 paid upgrade pack.
-- [x] The free preview should show title improvement plus competitor-backed gaps; the paid pack must include SEO/copy outputs because those are table stakes in the market.
+- [x] The V1 result shows title improvement plus competitor-backed gaps; the full pack includes SEO/copy outputs because those are table stakes in the market.
 - [x] Market scan completed July 13, 2026: closest live competitors are ConvertMate, Describely, Hypotenuse AI, Shopify Sidekick/Magic, Profitonium ChatGPT AI Product Description, Avada AI Product Description, Smartli, and Perci as the Amazon-listing analogue.
 - [x] Main positioning gap: most tools are bulk catalog generators or broad SEO suites; few sell a simple no-install, one-URL, competitor-benchmarked Shopify PDP audit with a fixed-price upgrade pack.
 - [x] Added the live audit contract and Hermes normalization in `src/audit-core.js`.
@@ -261,8 +279,8 @@ The persistence call must not block a usable fallback result if Convex is unavai
 - [x] Local real integration harness passed: Linkup returned 5 competitors, Convex saved the audit, and the stored full pack was returned.
 - [x] True Hermes agent adapter implemented: PDP scrape → Linkup competitors → Hermes CLI → strict full-pack JSON.
 - [x] Public Quick Tunnel returned a real `source: hermes`, `mode: hermes` response with 5 competitors and all full-pack fields.
-- [ ] Set the production Cloudflare `HERMES_UPSTREAM_URL` to the reachable adapter and redeploy/verify a real Shopify PDP.
-- [ ] Production `/api/audit` verification/redeploy remains pending because Wrangler is not authenticated in this session.
+- [x] Automatic competitor discovery now extracts brand/category/search terms, runs focused queries, filters merchant-brand results, and preserves query provenance.
+- [ ] Production `/api/audit` verification/redeploy remains pending; this is tracked in Remaining V1 release steps because Wrangler is not authenticated in this session.
 - [x] Dodo checkout contract test passed: product cart, customer email, return URL, and audit metadata are sent server-side.
 - [x] Dodo route bundled with all Pages Functions and the frontend build passes.
 - [ ] Live Dodo test checkout returned HTTP 401 Unauthorized; replace the test/live API key pairing before charging or claiming checkout is live.

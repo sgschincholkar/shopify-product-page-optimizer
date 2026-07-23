@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: pdp-signal-hermes
+    runtime: docker
+    dockerfilePath: ./Dockerfile.hermes
+    dockerContext: .
+    region: singapore
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: LINKUP_API_KEY
+        sync: false
+      - key: HERMES_UPSTREAM_TOKEN
+        sync: false
+      # Add the Hermes provider credentials/configuration required by the
+      # selected model provider in the Render service environment.
