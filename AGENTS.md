@@ -125,6 +125,11 @@ These Hermes-native skills are available and relevant:
 
 Claude-specific files under `~/.claude/skills/` are not automatically Hermes skills. Use Hermes `skill_view()` for installed Hermes skills; inspect or run Claude/gstack files only when explicitly needed.
 
+Two global Claude skills (`~/.claude/skills/`, available in every project) apply directly here:
+
+- `deploy-check`: run automatically right after any deploy to Cloudflare Pages, Railway, or Render — before reporting a deploy as live. Checks repo config (`render.yaml`, `Dockerfile.hermes`) against actual platform dashboard state (builder type, plan/tier, env vars) and hits the health check directly. Do not wait to be asked; a deploy is unverified until this runs. This is the exact class of bug (Render silent free tier, Railway defaulting to Railpack instead of Dockerfile) that previously caused hours of 502/fallback debugging on this project.
+- `hermes-audit-debug`: use whenever `/api/audit` returns a fallback pack, a 502, or any Hermes-related error. Checklist starts with `GET /debug/hermes-check` on the Hermes backend before digging into logs.
+
 ## Agent and provider distinction
 
 - `hermes chat --provider openai-codex`: Hermes is the harness; OpenAI Codex supplies model inference.
@@ -147,13 +152,13 @@ Never fabricate scraper results, competitor data, payment confirmations, Convex 
 <claude-mem-context>
 # Memory Context
 
-# [shopify-product-page-optimizer] recent context, 2026-07-23 6:39pm GMT+5:30
+# [shopify-product-page-optimizer] recent context, 2026-07-24 4:54am GMT+5:30
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 9 obs (3,824t read) | 53,356t work | 93% savings
+Stats: 22 obs (7,993t read) | 163,311t work | 95% savings
 
 ### Jul 17, 2026
 630 10:39p 🔵 Shopify Product Page Optimizer — V1 Build Status Snapshot
@@ -166,6 +171,22 @@ Stats: 9 obs (3,824t read) | 53,356t work | 93% savings
 640 " 🔵 Shopify Product Page Optimizer — detailed build state with 3 critical blockers identified
 641 " 🔵 Dodo checkout and webhook endpoints fully coded but blocked by 401 credential mismatch and unconfigured frontend redirect
 642 5:36p 🔵 Frontend "Unlock full pack" button missing — Dodo checkout call not wired in src/main.js
+### Jul 23, 2026
+677 10:36p ⚖️ Runtime Operator Agent Alternatives to Claude/OpenAI APIs
+S1024 Runtime Operator Evaluation — Alternatives to Hermes Agent and Claude/OpenAI APIs for AllSocialChannels/Shopify PDP Optimizer (Jul 23 at 10:36 PM)
+### Jul 24, 2026
+679 12:03a 🔵 Vercel Build Configuration — Deploy Command Visibility Issue
+681 3:54a ✅ AllSocialChannels — Successful Deployment to Production
+683 4:08a 🔵 Cloudflare Pages — No "Retry Deployment" Button Visible in UI
+685 " 🔵 Cloudflare Pages — Retry Deployment Available via API, Not Always in Dashboard UI
+686 4:14a ✅ AllSocialChannels — Build Completed Successfully
+688 4:20a 🔵 User Frustration — Misunderstanding of Token/Auth Setup Between Render and Cloudflare Pages
+689 " ✅ lessons.md Updated — Deployment Instruction Quality Rule Added
+691 4:25a 🔵 AllSocialChannels — Upstream URL Must Match Render's Configured URL in Cloudflare Pages
+692 4:26a 🔵 Shopify PDP Optimizer — Render Health Endpoint Inaccessible (Non-Retryable Error)
+693 4:41a ✅ AllSocialChannels — Build Deployed Successfully
+695 4:45a 🔵 Shopify PDP Optimizer — Root Path Returns "Method Not Allowed" on Render
+697 4:46a 🔵 Cloudflare Pages — *.pages.dev Subdomain Cannot Be Renamed; Custom Domain Is the Only Path
 
-Access 53k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 163k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>
