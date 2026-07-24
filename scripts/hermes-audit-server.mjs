@@ -123,6 +123,25 @@ async function handle(req, res) {
   if (req.method === 'GET' && req.url === '/health') {
     return send(res, 200, { ok: true, service: 'hermes-audit-adapter' });
   }
+  if (req.method === 'GET' && req.url === '/debug/hermes-check') {
+    try {
+      const { stdout, stderr } = await execFileAsync('hermes', ['chat', '-Q', '-m', 'openai/gpt-5.5', '-q', 'Reply with the single word OK.'], {
+        timeout: 30_000,
+        maxBuffer: 1024 * 1024,
+        env: process.env,
+      });
+      return send(res, 200, { ok: true, stdout, stderr });
+    } catch (error) {
+      return send(res, 500, {
+        ok: false,
+        message: error.message,
+        stdout: error.stdout || '',
+        stderr: error.stderr || '',
+        code: error.code,
+        signal: error.signal,
+      });
+    }
+  }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed.' });
   const expectedToken = process.env.HERMES_UPSTREAM_TOKEN;
   if (expectedToken) {
