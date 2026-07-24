@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "node --test",
     "hermes:adapter": "node scripts/hermes-audit-server.mjs",
     "deploy": "npm run build && npx wrangler pages deploy dist --project-name shopify-product-page-optimizer"
   },
