@@ -138,6 +138,7 @@ async function handle(req, res) {
       const discovery = await discoverCompetitors(input, pdpContext);
       return send(res, 200, await runHermes(input, pdpContext, discovery.competitors, discovery.discoveryQueries));
     } catch (error) {
+      console.error('Audit request failed:', error.stack || error.message, error.stderr ? `\nstderr: ${error.stderr}` : '');
       return send(res, 502, { error: error.message || 'Hermes audit failed.' });
     }
   });
