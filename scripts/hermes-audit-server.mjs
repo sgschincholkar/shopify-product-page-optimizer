@@ -100,7 +100,7 @@ function parseAgentJson(stdout) {
 
 async function runHermes(input, pdpContext, competitors, discoveryQueries) {
   const prompt = buildPrompt(input, pdpContext, competitors);
-  const { stdout } = await execFileAsync('hermes', ['chat', '-Q', '--skills', 'shopify-pdp-upgrade-audit', '-q', prompt], {
+  const { stdout } = await execFileAsync('hermes', ['chat', '-Q', '-m', 'openai/gpt-5.5', '--skills', 'shopify-pdp-upgrade-audit', '-q', prompt], {
     timeout: TIMEOUT_MS,
     maxBuffer: 2 * 1024 * 1024,
     env: process.env,
