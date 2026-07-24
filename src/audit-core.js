@@ -87,8 +87,8 @@ export function extractPdpContext(html = '', productUrl = '') {
     const match = html.match(pattern);
     return cleanText(match?.[1] || match?.[2] || '');
   };
-  const headings = [...html.matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi)].map((m) => text(m[1])).filter(Boolean).slice(0, 12);
-  const bullets = [...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)].map((m) => text(m[1])).filter((item) => item.length > 8).slice(0, 12);
+  const headings = [...html.matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi)].map((m) => text(m[1]).slice(0, 200)).filter(Boolean).slice(0, 12);
+  const bullets = [...html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)].map((m) => text(m[1]).slice(0, 200)).filter((item) => item.length > 8).slice(0, 12);
   const images = [...html.matchAll(/<img[^>]+(?:src|data-src)=["']([^"']+)["']/gi)].map((m) => m[1]).filter(Boolean).slice(0, 12);
   const price = html.match(/(?:[$€£]\s?\d+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?\s?(?:USD|EUR|GBP))/i)?.[0] || '';
   const description = meta('description') || meta('og:description');
@@ -113,7 +113,11 @@ export function extractPdpContext(html = '', productUrl = '') {
     headings,
     bullets,
     images,
-    structuredData: structuredData.slice(0, 5),
+    structuredData: structuredData.slice(0, 3).map((entry) => {
+      const serialized = JSON.stringify(entry);
+      if (serialized.length <= 2000) return entry;
+      try { return JSON.parse(serialized.slice(0, 2000)); } catch { return { '@type': entry?.['@type'] || 'unknown', truncated: true }; }
+    }),
     brand,
     productType,
   };
