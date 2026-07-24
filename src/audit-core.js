@@ -317,14 +317,17 @@ async function fallbackAudit(fetchImpl, input, reason = '') {
   };
 }
 
-export async function runAudit(body, { fetchImpl = fetch, hermesAuditUrl = '', convexAuditUrl = '' } = {}) {
+export async function runAudit(body, { fetchImpl = fetch, hermesAuditUrl = '', hermesAuditToken = '', convexAuditUrl = '' } = {}) {
   const input = validateAuditInput(body);
   let result;
   if (hermesAuditUrl) {
     try {
       const response = await fetchWithTimeout(fetchImpl, hermesAuditUrl, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(hermesAuditToken ? { authorization: `Bearer ${hermesAuditToken}` } : {}),
+        },
         body: JSON.stringify(input),
       });
       if (!response.ok) throw new Error(`Hermes returned HTTP ${response.status}.`);
@@ -364,7 +367,7 @@ export async function auditRequest(request, env = {}) {
   if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed.' }, 405);
   try {
     const body = await request.json();
-    return jsonResponse(await runAudit(body, { hermesAuditUrl: env.HERMES_AUDIT_URL, convexAuditUrl: env.CONVEX_AUDIT_URL }));
+    return jsonResponse(await runAudit(body, { hermesAuditUrl: env.HERMES_AUDIT_URL, hermesAuditToken: env.HERMES_UPSTREAM_TOKEN, convexAuditUrl: env.CONVEX_AUDIT_URL }));
   } catch (error) {
     return jsonResponse({ error: error.message || 'Audit failed. Try again.' }, 400);
   }
@@ -377,7 +380,7 @@ export function auditRequestForNode(req, res, env = {}) {
   req.on('data', (chunk) => { raw += chunk; });
   req.on('end', async () => {
     try {
-      const result = await runAudit(JSON.parse(raw || '{}'), { hermesAuditUrl: env.HERMES_AUDIT_URL, convexAuditUrl: env.CONVEX_AUDIT_URL });
+      const result = await runAudit(JSON.parse(raw || '{}'), { hermesAuditUrl: env.HERMES_AUDIT_URL, hermesAuditToken: env.HERMES_UPSTREAM_TOKEN, convexAuditUrl: env.CONVEX_AUDIT_URL });
       res.statusCode = 200; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(result));
     } catch (error) {
       res.statusCode = 400; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ error: error.message || 'Audit failed. Try again.' }));
