@@ -100,7 +100,7 @@ function parseAgentJson(stdout) {
 
 async function runHermes(input, pdpContext, competitors, discoveryQueries) {
   const prompt = buildPrompt(input, pdpContext, competitors);
-  const { stdout } = await execFileAsync('hermes', ['chat', '-Q', '--provider', 'openrouter', '-m', 'openai/gpt-5.5', '--skills', 'shopify-pdp-upgrade-audit', '-q', prompt], {
+  const { stdout } = await execFileAsync('hermes', ['chat', '-Q', '--provider', 'openrouter', '-m', 'deepseek/deepseek-v4-flash', '--skills', 'shopify-pdp-upgrade-audit', '-q', prompt], {
     timeout: TIMEOUT_MS,
     maxBuffer: 2 * 1024 * 1024,
     env: process.env,
@@ -125,7 +125,7 @@ async function handle(req, res) {
   }
   if (req.method === 'GET' && req.url === '/debug/hermes-check') {
     try {
-      const { stdout, stderr } = await execFileAsync('hermes', ['chat', '-Q', '--provider', 'openrouter', '-m', 'openai/gpt-5.5', '-q', 'Reply with the single word OK.'], {
+      const { stdout, stderr } = await execFileAsync('hermes', ['chat', '-Q', '--provider', 'openrouter', '-m', 'deepseek/deepseek-v4-flash', '-q', 'Reply with the single word OK.'], {
         timeout: 30_000,
         maxBuffer: 1024 * 1024,
         env: process.env,
