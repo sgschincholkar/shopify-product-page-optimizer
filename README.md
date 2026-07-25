@@ -9,11 +9,14 @@ No Shopify app install, theme edits, or admin access needed. Everything runs off
 ## How it works
 
 1. A merchant lands on the single-page app and enters their **email** and **product page URL**.
-2. The app calls `POST /api/audit`, which extracts the PDP, discovers relevant competitor candidates, and shows **original title vs. upgraded title** side by side.
-3. Hermes generates and shows the **full upgrade pack** on screen.
-4. The audit and result are stored in Convex when configured.
+2. The app calls `POST /api/audit` with `Accept: application/x-ndjson` and streams results back progressively instead of waiting on one long request:
+   - **~2-5s** — page scraped, original title + a heuristic upgrade pack appear immediately
+   - **~10-35s** — competitor pages found, pack updates with competitor-informed copy
+   - **~30-90s** — Hermes finishes the full analysis: real gaps, claim warnings, and the final copy pack replace the heuristic version
+3. Each section shows a live score badge (heuristic now, Hermes-generated later) and its supporting citations.
+4. The audit and result are stored in Convex when configured, streamed back as a final `audit_persisted` event.
 
-The v1 promise is a concrete page-gap analysis followed by a complete PDP rewrite. Processing time depends on the product page and competitor research availability.
+The v1 promise is a concrete page-gap analysis followed by a complete PDP rewrite. Streaming means the user sees useful output within seconds instead of staring at a loading screen — and if the final Hermes step fails, the competitor-informed fallback pack is already on screen instead of a dead error.
 
 ## Current status
 
@@ -22,10 +25,14 @@ This is a v1 build in progress. Honest breakdown of what's live vs. planned:
 | Piece | Status |
 |---|---|
 | Landing page (hero, form, processing/success/error states) | ✅ Built |
+| Scored, cited, routable report page (`/report/:auditId`) | ✅ Built |
+| NDJSON streaming — progressive results instead of one long request | ✅ Built and verified live in production |
 | Free audit API with title extraction + heuristic rewrite fallback | ✅ Built |
-| Hermes audit proxy endpoint (`/api/hermes/audit`) | ✅ Built (production URL still needs configuration) |
+| Hermes audit proxy endpoint (`/api/audit`, streaming-aware) | ✅ Built |
+| `/api/hermes/audit` (pre-streaming proxy) | ⚠️ Deprecated — kept for backward compatibility, will be removed |
 | Dodo checkout and webhook | ⏭️ V2 only |
-| Hermes agent doing real competitor discovery + benchmarked full packs | ✅ Verified locally with Linkup, 5 competitors, proof fields, and claim warnings |
+| Hermes agent doing real competitor discovery + benchmarked full packs | ✅ Verified locally and in production with Linkup, 5 competitors, proof fields, and claim warnings |
+| Hermes CLI reliability on real (large) prompts | ⚠️ Known issue — currently fails on some production pages; streaming pipeline degrades gracefully to the fallback pack when this happens |
 | Convex audit persistence (`stores`, `audits`) | ✅ Verified on the development deployment |
 | Full pack generation + on-screen rendering | ✅ Verified in payment-free V1 path |
 | Dodo payments, paid access, payment records, email | ⏭️ V2 only |
@@ -34,54 +41,79 @@ The UI labels every result as either **Hermes-generated output** or a fallback p
 
 ## Architecture
 
+The audit pipeline streams results over NDJSON (newline-delimited JSON) instead of buffering one long response. This exists because content-heavy Shopify pages regularly took 60-90s end to end, which used to exceed Cloudflare's request timeout and fail with "Operation aborted." Streaming means the user sees the scraped title within seconds and the report fills in as each pipeline step finishes.
+
 ```
 Browser (Vite static app, src/main.js)
    │  POST /api/audit  { productUrl, email }
+   │  Accept: application/x-ndjson
    ▼
-Cloudflare Pages Function (functions/api/audit.js → src/audit-core.js)
-   │
-   ├─ HERMES_AUDIT_URL set?
-   │    ├─ yes → forward to Hermes audit service → normalized title result
-   │    └─ no  → fetch the product page directly, extract the title
-   │             (og:title → h1 → <title>), generate a heuristic rewrite
-   │
-   ├─ CONVEX_AUDIT_URL set? → persist audit (operation: saveFreeAudit)
-   │
+Cloudflare Pages Function (functions/api/audit.js)
+   │  pipes the upstream response stream straight through — near-zero CPU
    ▼
-JSON result: { auditId, originalTitle, newTitle, competitors, discoveryQueries, competitorGaps, evidence, claimWarnings, limitations, source, note, persistence }
+Railway Node host (scripts/hermes-audit-server.mjs)
+   │
+   ├─ scrapePdp()            ──▶ emit "pdp_scraped"        (~2-5s)
+   │     extracts title, description, headings, structured data
+   │     also computes a heuristic fallback pack (createFullPack) for
+   │     instant display — no external calls needed
+   │
+   ├─ discoverCompetitors()  ──▶ emit "competitors_found"  (~10-35s)
+   │     3 Linkup queries run in parallel, depth: 'deep'
+   │     recomputes the heuristic pack using competitor terms
+   │
+   ├─ runHermes()            ──▶ emit "hermes_complete"    (~30-90s)
+   │     shells out to `hermes chat` (deepseek/deepseek-v4-flash via
+   │     OpenRouter) with the full PDP + competitor context
+   │     on failure: emits "step_error" — the competitor-informed
+   │     fallback pack already on screen stays as the final answer
+   │
+   └─ persistAudit()         ──▶ emit "audit_persisted"
+         saves to Convex once the pipeline finishes
+```
 
-V1 result path:
-Hermes skill + Linkup → full pack → Convex audit persistence → on-screen result
+Each step's three sequential stages have real data dependencies (competitor search needs the scraped brand/category; the LLM prompt needs both scrape + competitor evidence), so they can't run in parallel — but each stage's output is useful on its own and gets rendered immediately rather than held back until the whole pipeline finishes.
 
-V2 payment path:
+Content negotiation: sending `Accept: application/x-ndjson` gets the streaming response; anything else gets the legacy single-JSON response (used by curl, tests, and any non-streaming client). `parseNdjsonStream()` in `src/audit-core.js` is the shared reader used by the frontend.
+
+```
+V2 payment path (not yet built):
 Dodo checkout → signed webhook → paid audit state → email delivery
 ```
 
 ### Stack
 
-- **Frontend:** Vanilla JS + [Vite](https://vitejs.dev/), single-page static app. No framework.
-- **API:** [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/) under `functions/api/`. In local dev, the same handler is mounted at `/api/audit` by a Vite middleware plugin (`vite.config.js`), so frontend and API share one dev server.
-- **Audit engine:** Hermes agent running through a permanent Node adapter. The adapter fetches the public PDP, extracts brand/category/search signals, runs focused Linkup searches, and invokes `hermes chat --skills shopify-pdp-upgrade-audit`. Cloudflare Pages proxies requests to it through `/api/hermes/audit`.
+- **Frontend:** Vanilla JS + [Vite](https://vitejs.dev/), single-page static app. No framework. Reads the NDJSON stream via `ReadableStream` + `TextDecoderStream`, no `EventSource` (SSE requires GET; this is a POST).
+- **API:** [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/) under `functions/api/`. `functions/api/audit.js` pipes the upstream stream through when the client asks for NDJSON, or buffers a single JSON response otherwise. In local dev, `/api/audit` is mounted by a Vite middleware plugin (`vite.config.js`); set `MOCK_STREAM=1` to serve fake streaming events with realistic delays, no Railway/Linkup credentials needed.
+- **Audit engine:** Hermes agent running through a permanent Node adapter on Railway (`scripts/hermes-audit-server.mjs`). The adapter fetches the public PDP, extracts brand/category/search signals, runs focused Linkup searches, and invokes `hermes chat --skills shopify-pdp-upgrade-audit` via OpenRouter.
 - **Storage:** [Convex](https://www.convex.dev/) — audit persistence in v1; payment records are v2.
 - **Payments:** [Dodo Payments](https://dodopayments.com/) one-time $19 checkout, v2 only.
-- **Hosting:** Cloudflare Pages (`wrangler.toml`, build output in `dist/`).
+- **Hosting:** Cloudflare Pages for the frontend + API proxy (`wrangler.toml`, build output in `dist/`); Railway for the long-running Hermes/Linkup Node process.
 
 ## Project structure
 
 ```
 ├── index.html                     # Vite entry
 ├── src/
-│   ├── main.js                    # Landing page UI, form handling, result rendering
+│   ├── main.js                    # Landing/report SPA router, streaming handler,
+│   │                              #   progressive section rendering
 │   ├── audit-core.js              # Shared audit logic: validation, title extraction,
-│   │                              #   Hermes call, fallback rewrite, Convex persistence.
-│   │                              #   Runs on both Cloudflare Workers and Node (dev).
-│   └── style.css                  # Styles
+│   │                              #   scoring, NDJSON stream parsing, Hermes call,
+│   │                              #   fallback rewrite, Convex persistence.
+│   │                              #   Runs on both Cloudflare Workers and Node (dev/Railway).
+│   └── style.css                  # Styles — three-layer tokens (primitive/semantic/component)
 ├── functions/api/
-│   ├── audit.js                   # POST /api/audit — free title audit
-│   ├── hermes/audit.js            # POST /api/hermes/audit — proxy to Hermes upstream
+│   ├── audit.js                   # POST /api/audit — streams NDJSON when Accept
+│   │                              #   asks for it, else returns single JSON
+│   ├── hermes/audit.js            # Deprecated pre-streaming proxy, kept temporarily
 │   └── dodo/webhook.js            # POST /api/dodo/webhook — payment confirmation
-├── vite.config.js                 # Dev server + local /api/audit middleware
+├── scripts/
+│   └── hermes-audit-server.mjs    # Railway host — scrape → Linkup → Hermes CLI,
+│                                  #   emits NDJSON events after each step
+├── vite.config.js                 # Dev server + local /api/audit middleware;
+│                                  #   MOCK_STREAM=1 for fake streaming events
 ├── wrangler.toml                  # Cloudflare Pages config
+├── public/_redirects              # SPA fallback so /report/:auditId doesn't 404
 ├── PRD - Shopify Product Page Optimizer.md   # Full product requirements
 ├── AGENTS.md                      # Agent/contributor working instructions
 └── tasks/                         # todo.md and lessons.md (working notes)
@@ -131,14 +163,14 @@ The host must provide Node.js, the `hermes` executable on `PATH`, and the `shopi
 npm run hermes:adapter
 ```
 
-Set `HOST=0.0.0.0`; the host supplies `PORT`. The repository includes `Dockerfile.hermes` and `render.yaml` for a Render web service. Verify `GET /health`, then set Cloudflare's `HERMES_UPSTREAM_URL` to the host's HTTPS URL. This is a backend runtime service, not a second customer-facing app.
+Set `HOST=0.0.0.0`; the host supplies `PORT`. Currently deployed on Railway; `Dockerfile.hermes` and `render.yaml` remain in the repo as an alternate Render deployment path but are not the live target. Verify `GET /health`, then set Cloudflare's `HERMES_AUDIT_URL` (and/or `HERMES_UPSTREAM_URL`) to the host's HTTPS URL. This is a backend runtime service, not a second customer-facing app.
 
-The Hermes model provider credentials must also be added to the host using the provider's supported environment variables or Hermes configuration. Do not commit those credentials or copy the local Hermes profile into the repository.
+The Hermes model provider credentials must also be added to the host using the provider's supported environment variables or Hermes configuration. Do not commit those credentials or copy the local Hermes profile into the repository. Currently running `--provider openrouter -m deepseek/deepseek-v4-flash`, authenticated with `OPENROUTER_API_KEY` — not a plain OpenAI key (Hermes has no bare `openai` provider; see `hermes-audit-debug` skill for the full provider list).
 
 ```text
-Browser -> Cloudflare Pages /api/audit -> /api/hermes/audit
-        -> permanent Hermes Node host -> scrape + Linkup -> hermes chat + skill
-        -> Cloudflare -> Convex persistence -> browser full pack
+Browser -> Cloudflare Pages /api/audit (streams NDJSON when asked)
+        -> Railway Hermes Node host -> scrape + Linkup + hermes chat + skill
+        -> Convex persistence -> browser, section by section
 ```
 
 Never commit `.env`, `.env.local`, or `.dev.vars` — they're gitignored.
@@ -147,7 +179,7 @@ Never commit `.env`, `.env.local`, or `.dev.vars` — they're gitignored.
 
 ### `POST /api/audit`
 
-Payment-free V1 audit.
+Payment-free V1 audit. Supports both streaming and legacy single-response modes via content negotiation.
 
 **Request**
 
@@ -157,7 +189,39 @@ Payment-free V1 audit.
 
 (Snake_case `product_url` / `user_email` are also accepted. `verticalHint` remains an optional API-only category hint; the customer form does not require it because category signals are inferred from the PDP.)
 
-**Response**
+#### Streaming mode (`Accept: application/x-ndjson`)
+
+Response is `application/x-ndjson` — one JSON object per line, each with an `event` and `data` field. Used by the frontend.
+
+```jsonl
+{"event":"audit_started","data":{"auditId":"uuid","productUrl":"...","ts":1234567890}}
+{"event":"pdp_scraped","data":{"originalTitle":"...","pdpContext":{...},"freePack":{...}}}
+{"event":"competitors_found","data":{"competitors":[...],"discoveryQueries":[...],"enrichedPack":{...}}}
+{"event":"hermes_complete","data":{"newTitle":"...","fullPack":{...},"competitorGaps":[...],"evidence":[...],"claimWarnings":[...],"limitations":[...],"analysisMode":"..."}}
+{"event":"audit_persisted","data":{"persistence":{"status":"saved"}}}
+```
+
+Error events can appear instead of (or interleaved with) the events above:
+
+```jsonl
+{"event":"step_error","data":{"step":"hermes","error":"...","recoverable":true}}
+{"event":"fatal_error","data":{"error":"PDP returned HTTP 404."}}
+{"event":"keepalive","data":{"ts":1234567890}}
+```
+
+A `step_error` with `recoverable: true` means the stream continues — the frontend keeps whatever partial pack it already has (e.g. the competitor-informed fallback if Hermes fails) rather than showing a dead end. `fatal_error` ends the stream early (e.g. the product page itself couldn't be fetched). `keepalive` fires every 25s during long steps so the connection doesn't idle out.
+
+Try it directly:
+
+```bash
+curl -N -X POST -H 'Accept: application/x-ndjson' -H 'Content-Type: application/json' \
+  -d '{"productUrl":"https://yourstore.com/products/example","email":"you@yourbrand.com"}' \
+  https://your-app.pages.dev/api/audit
+```
+
+#### Legacy mode (no `Accept: application/x-ndjson`)
+
+Buffers the full pipeline and returns one JSON object — used by curl without the header, tests, and any non-streaming client.
 
 ```json
 {
@@ -178,11 +242,11 @@ Payment-free V1 audit.
 }
 ```
 
-Errors return `{ "error": "…" }` with a 4xx status. The upstream Hermes call times out after 85 s; Convex persistence after 10 s (a persistence failure never fails the audit).
+Errors return `{ "error": "…" }` with a 4xx status. Convex persistence times out after 10s (a persistence failure never fails the audit).
 
-### `POST /api/hermes/audit`
+### `POST /api/hermes/audit` (deprecated)
 
-Thin proxy to the configured Hermes upstream (`HERMES_UPSTREAM_URL`), attaching the bearer token if set. Returns 503 when unconfigured.
+Pre-streaming proxy to the configured Hermes upstream. Kept temporarily for backward compatibility; new work should go through `/api/audit`.
 
 ### `POST /api/dodo/webhook` (v2 only)
 
@@ -190,8 +254,12 @@ The Dodo payment webhook remains isolated for v2. It is not part of the v1 runti
 
 ## Roadmap (from the PRD)
 
-- [ ] Deploy the verified V1 path to Cloudflare Pages with production Hermes, Linkup, and Convex variables
-- [ ] Run and document an end-to-end production test with a public Shopify PDP
+- [x] Deploy the verified V1 path to Cloudflare Pages with production Hermes, Linkup, and Convex variables
+- [x] Run and document an end-to-end production test with a public Shopify PDP
+- [x] Stream audit results progressively (NDJSON) instead of one long request
+- [ ] Fix Hermes CLI reliability on real (large) production prompts — currently fails and falls back to the heuristic pack on some pages
+- [ ] Interactive competitor review — let the user exclude a competitor before the LLM analysis runs (needs a second request; NDJSON is one-directional)
+- [ ] Remove the deprecated `/api/hermes/audit` endpoint once nothing calls it
 - [ ] V2: Dodo checkout, payment webhook, payment records, and email delivery
 - [ ] Later: repeat-user brand memory, founder dashboard, basic analytics
 
