@@ -7,6 +7,9 @@ import {
   filterCompetitorResults,
   normalizeHermesResult,
   runAudit,
+  scoreAudit,
+  scoreSection,
+  SECTION_DEFINITIONS,
 } from '../src/audit-core.js';
 
 const coffeePdpHtml = `
@@ -115,4 +118,93 @@ test('persists Hermes proof fields with the audit record', async () => {
   assert.deepEqual(convexPayload.audit.limitations, ['No rendered reviews available.']);
   assert.equal(convexPayload.audit.analysisMode, 'merchant-only-fallback');
   assert.deepEqual(convexPayload.audit.discoveryQueries, ['dark roast coffee competitors', 'dark roast coffee product page']);
+});
+
+test('scoreSection starts at 100 and stays there with no gaps, warnings, or missing content', () => {
+  const section = SECTION_DEFINITIONS.find((item) => item.id === 'trust');
+  const result = scoreSection(section, { competitorGaps: [], claimWarnings: [], pack: { trustCopy: 'Backed by a 30-day guarantee.' } });
+
+  assert.equal(result.score, 100);
+  assert.equal(result.band, 'good');
+  assert.equal(result.missingContent, false);
+});
+
+test('scoreSection penalizes a matching high-impact gap and bands it accordingly', () => {
+  const section = SECTION_DEFINITIONS.find((item) => item.id === 'trust');
+  const result = scoreSection(section, {
+    competitorGaps: [{ gap: 'Weak trust proof', impact: 'high', recommendation: 'Add a guarantee badge.' }],
+    claimWarnings: [],
+    pack: { trustCopy: 'Backed by a 30-day guarantee.' },
+  });
+
+  assert.equal(result.score, 78);
+  assert.equal(result.band, 'warn');
+  assert.equal(result.gaps.length, 1);
+});
+
+test('scoreSection ignores gaps that do not mention this section', () => {
+  const section = SECTION_DEFINITIONS.find((item) => item.id === 'seo');
+  const result = scoreSection(section, {
+    competitorGaps: [{ gap: 'Weak trust proof', impact: 'high' }],
+    claimWarnings: [],
+    pack: { seo: { metaTitle: 'Dark Roast Coffee | Brand', metaDescription: 'Bold and smooth.' } },
+  });
+
+  assert.equal(result.score, 100);
+  assert.equal(result.gaps.length, 0);
+});
+
+test('scoreSection applies a large penalty and missingContent flag when the section has no generated content', () => {
+  const section = SECTION_DEFINITIONS.find((item) => item.id === 'benefits');
+  const result = scoreSection(section, { competitorGaps: [], claimWarnings: [], pack: {} });
+
+  assert.equal(result.score, 70);
+  assert.equal(result.band, 'warn');
+  assert.equal(result.missingContent, true);
+});
+
+test('scoreSection clamps at zero under heavy penalties', () => {
+  const section = SECTION_DEFINITIONS.find((item) => item.id === 'faqs');
+  const result = scoreSection(section, {
+    competitorGaps: [
+      { gap: 'FAQ missing objection handling', impact: 'high' },
+      { gap: 'FAQ tone is generic', impact: 'high' },
+      { gap: 'FAQ ignores common question', impact: 'high' },
+    ],
+    claimWarnings: [{ proposedClaim: 'FAQ overclaims results', reason: 'No proof supplied.' }],
+    pack: {},
+  });
+
+  assert.equal(result.score, 0);
+  assert.equal(result.band, 'critical');
+});
+
+test('scoreAudit scores every defined section and averages them into an overall band', () => {
+  const result = scoreAudit({
+    newTitle: 'Fiercely Strong Dark Roast Coffee',
+    fullPack: {
+      description: 'A bold dark roast built for early mornings.',
+      bullets: ['High caffeine', 'Smooth finish'],
+      faqs: [{ question: 'Is it strong?', answer: 'Yes.' }],
+      trustCopy: 'Loved by thousands of early risers.',
+      imageRecommendations: ['Show the roast color close up.'],
+      seo: { metaTitle: 'Dark Roast Coffee', metaDescription: 'Bold and smooth.', keyTerms: ['dark roast'] },
+    },
+    competitorGaps: [{ gap: 'Weak trust proof', impact: 'medium' }],
+    claimWarnings: [],
+  });
+
+  assert.equal(result.sections.length, SECTION_DEFINITIONS.length);
+  assert.equal(result.gapCount, 1);
+  assert.equal(result.method, 'heuristic');
+  assert.ok(result.overall < 100 && result.overall >= 80);
+  assert.equal(result.band, 'good');
+});
+
+test('scoreAudit returns zero-content penalties for every section on an empty fallback pack', () => {
+  const result = scoreAudit({ newTitle: '', fullPack: null, competitorGaps: [], claimWarnings: [] });
+
+  assert.ok(result.sections.every((section) => section.missingContent));
+  assert.equal(result.overall, 70);
+  assert.equal(result.band, 'warn');
 });

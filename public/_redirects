@@ -1,0 +1,5 @@
+# SPA fallback so a direct load of /report/:auditId reaches index.html
+# instead of 404ing. Cloudflare Pages Functions under /api/* already take
+# priority over this rule, so the existing audit/checkout endpoints are
+# unaffected.
+/*  /index.html  200

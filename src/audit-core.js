@@ -363,6 +363,104 @@ export async function runAudit(body, { fetchImpl = fetch, hermesAuditUrl = '', h
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* Section scoring                                                     */
+/*                                                                     */
+/* Heuristic for now: derived from gaps, claim warnings, and whether   */
+/* the pack field was actually generated. The shape mirrors what a     */
+/* Hermes-generated score would return, so swapping the source later   */
+/* means replacing the body of scoreAudit, not the report UI.          */
+/* ------------------------------------------------------------------ */
+
+export const SECTION_DEFINITIONS = [
+  { id: 'title', label: 'Title & Positioning', keywords: ['title', 'headline', 'name', 'positioning'] },
+  { id: 'description', label: 'Product Description', keywords: ['description', 'copy', 'body', 'story'] },
+  { id: 'benefits', label: 'Benefits & Bullets', keywords: ['benefit', 'bullet', 'feature', 'value'] },
+  { id: 'faqs', label: 'Objections & FAQs', keywords: ['faq', 'objection', 'question', 'concern'] },
+  { id: 'trust', label: 'Trust & Proof', keywords: ['trust', 'proof', 'review', 'guarantee', 'shipping', 'return'] },
+  { id: 'images', label: 'Imagery', keywords: ['image', 'photo', 'visual', 'gallery', 'video'] },
+  { id: 'seo', label: 'SEO Metadata', keywords: ['seo', 'meta', 'keyword', 'search', 'serp'] },
+];
+
+const IMPACT_PENALTY = { high: 22, medium: 12, low: 6 };
+const CLAIM_WARNING_PENALTY = 8;
+const MISSING_CONTENT_PENALTY = 30;
+
+function impactPenalty(impact = '') {
+  return IMPACT_PENALTY[String(impact).trim().toLowerCase()] ?? IMPACT_PENALTY.medium;
+}
+
+function matchesSection(text, section) {
+  const haystack = String(text || '').toLowerCase();
+  return section.keywords.some((keyword) => haystack.includes(keyword));
+}
+
+function sectionContent(section, pack = {}) {
+  switch (section.id) {
+    case 'title': return pack.__newTitle || '';
+    case 'description': return pack.description || '';
+    case 'benefits': return pack.bullets || [];
+    case 'faqs': return pack.faqs || [];
+    case 'trust': return pack.trustCopy || '';
+    case 'images': return pack.imageRecommendations || [];
+    case 'seo': return [pack.seo?.metaTitle, pack.seo?.metaDescription].filter(Boolean);
+    default: return '';
+  }
+}
+
+function hasContent(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  return Boolean(String(value || '').trim());
+}
+
+export function scoreBand(score) {
+  if (score >= 80) return 'good';
+  if (score >= 50) return 'warn';
+  return 'critical';
+}
+
+export function scoreSection(section, { competitorGaps = [], claimWarnings = [], pack = {} } = {}) {
+  const gaps = competitorGaps.filter((gap) => matchesSection(`${gap?.gap || ''} ${gap?.recommendation || ''}`, section));
+  const warnings = claimWarnings.filter((warning) => matchesSection(`${warning?.proposedClaim || ''} ${warning?.reason || ''}`, section));
+  const missingContent = !hasContent(sectionContent(section, pack));
+
+  const penalty = gaps.reduce((total, gap) => total + impactPenalty(gap.impact), 0)
+    + warnings.length * CLAIM_WARNING_PENALTY
+    + (missingContent ? MISSING_CONTENT_PENALTY : 0);
+
+  const score = Math.max(0, Math.min(100, 100 - penalty));
+  return {
+    id: section.id,
+    label: section.label,
+    score,
+    band: scoreBand(score),
+    gaps,
+    warnings,
+    missingContent,
+  };
+}
+
+export function scoreAudit(result = {}) {
+  const competitorGaps = Array.isArray(result.competitorGaps) ? result.competitorGaps : [];
+  const claimWarnings = Array.isArray(result.claimWarnings) ? result.claimWarnings : [];
+  const pack = { ...(result.fullPack || {}), __newTitle: result.newTitle || '' };
+
+  const sections = SECTION_DEFINITIONS.map((section) => scoreSection(section, { competitorGaps, claimWarnings, pack }));
+  const overall = sections.length
+    ? Math.round(sections.reduce((total, section) => total + section.score, 0) / sections.length)
+    : 0;
+
+  return {
+    overall,
+    band: scoreBand(overall),
+    sections,
+    gapCount: competitorGaps.length,
+    warningCount: claimWarnings.length,
+    // Flags the score as heuristic so the UI can label it honestly.
+    method: 'heuristic',
+  };
+}
+
 export function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
 }
