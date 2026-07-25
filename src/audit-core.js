@@ -254,7 +254,7 @@ async function fetchWithTimeout(fetchImpl, url, options = {}, timeoutMs = AUDIT_
   }
 }
 
-async function persistAudit(fetchImpl, convexAuditUrl, result, input) {
+export async function persistAudit(fetchImpl, convexAuditUrl, result, input) {
   if (!convexAuditUrl) return { status: 'not_configured' };
   const payload = {
     operation: 'saveFreeAudit',
@@ -459,6 +459,33 @@ export function scoreAudit(result = {}) {
     // Flags the score as heuristic so the UI can label it honestly.
     method: 'heuristic',
   };
+}
+
+export const STREAM_EVENTS = {
+  AUDIT_STARTED: 'audit_started',
+  PDP_SCRAPED: 'pdp_scraped',
+  COMPETITORS_FOUND: 'competitors_found',
+  HERMES_COMPLETE: 'hermes_complete',
+  AUDIT_PERSISTED: 'audit_persisted',
+  STEP_ERROR: 'step_error',
+  FATAL_ERROR: 'fatal_error',
+  KEEPALIVE: 'keepalive',
+};
+
+export async function* parseNdjsonStream(readableStream) {
+  const reader = readableStream.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += value;
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (line.trim()) yield JSON.parse(line);
+    }
+  }
+  if (buffer.trim()) yield JSON.parse(buffer);
 }
 
 export function jsonResponse(data, status = 200) {

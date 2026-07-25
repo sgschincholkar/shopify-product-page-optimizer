@@ -1,5 +1,5 @@
 import './style.css';
-import { scoreAudit } from './audit-core.js';
+import { scoreAudit, parseNdjsonStream, createFullPack, createFreeTitle } from './audit-core.js';
 
 const app = document.querySelector('#app');
 const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -93,33 +93,300 @@ function reportBar(productUrl, { showNav = false } = {}) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Loading — staged text through the phases a real audit goes through, */
-/* since the call regularly takes 30s+.                                */
+/* Streaming skeleton — real progress driven by NDJSON events          */
 /* ------------------------------------------------------------------ */
-const LOADING_STAGES = [
-  { eyebrow: 'Reading your page', title: 'Pulling your current<br /><em>title and copy.</em>' },
-  { eyebrow: 'Scanning competitors', title: 'Finding the strongest<br /><em>comparable product pages.</em>' },
-  { eyebrow: 'Writing your pack', title: 'Turning gaps into<br /><em>copy you can paste in.</em>' },
-];
-let loadingTimer = null;
 
-function showLoading(productUrl) {
-  // pushState here (not replace) so the back button returns to landing;
-  // the result/error states that follow replace this same entry since
-  // they're the outcome of the same submission, not a new navigation.
+function showStreamingSkeleton(productUrl) {
   goToReport('pending');
-  let stage = 0;
-  const render = () => {
-    const { eyebrow, title } = LOADING_STAGES[stage];
-    report.innerHTML = `${reportBar(productUrl)}<div class="shell loading-view"><div class="loader"><span></span><span></span><span></span></div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h2>${title}</h2><p class="muted">No payment is required. This usually takes under a minute.</p></div>`;
-  };
-  render();
+  report.innerHTML = `${reportBar(productUrl)}
+    <div class="shell report-body">
+      <div id="stream-status" class="stream-status"><div class="loader"><span></span><span></span><span></span></div><span>Starting audit...</span></div>
+      <div id="stream-title" class="stream-section-pending"></div>
+      <div id="stream-score"></div>
+      <div id="stream-gaps"></div>
+      <div id="stream-competitors"></div>
+      <div id="stream-pack-toolbar"></div>
+      <div id="stream-pack-description"></div>
+      <div id="stream-pack-benefits"></div>
+      <div id="stream-pack-faqs"></div>
+      <div id="stream-pack-trust"></div>
+      <div id="stream-pack-images"></div>
+      <div id="stream-pack-seo"></div>
+      <div id="stream-notes"></div>
+      <div id="stream-footer"></div>
+    </div>`;
   focusReport();
-  clearInterval(loadingTimer);
-  loadingTimer = setInterval(() => {
-    stage = Math.min(stage + 1, LOADING_STAGES.length - 1);
-    render();
-  }, 6000);
+}
+
+function updateStreamStatus(message) {
+  const el = document.getElementById('stream-status');
+  if (!el) return;
+  if (!message) { el.remove(); return; }
+  el.innerHTML = `<div class="loader"><span></span><span></span><span></span></div><span>${escapeHtml(message)}</span>`;
+}
+
+function renderStreamTitle(state) {
+  const el = document.getElementById('stream-title');
+  if (!el) return;
+  el.className = 'stream-section';
+  const title = state.newTitle || state.originalTitle || '';
+  el.innerHTML = `
+    <div class="report-head"><p class="eyebrow success-label">✓ Reading your page</p><h2>Same product. <em>Sharper promise.</em></h2></div>
+    <div class="comparison">
+      <div><small>Current title</small><p>${escapeHtml(state.originalTitle || '')}</p></div>
+      <div class="arrow">→</div>
+      <div class="new-title"><div class="pack-heading"><small>Your upgraded title</small>${copyControl(title, 'upgraded title')}</div><p>${escapeHtml(title)}</p></div>
+    </div>`;
+}
+
+function renderStreamScore(state, { preliminary = false } = {}) {
+  const el = document.getElementById('stream-score');
+  if (!el) return;
+  const pack = state.finalPack || state.enrichedPack || state.freePack;
+  if (!pack) return;
+  const result = {
+    newTitle: state.newTitle || '',
+    fullPack: pack,
+    competitorGaps: state.competitorGaps,
+    claimWarnings: state.claimWarnings,
+  };
+  const scored = scoreAudit(result);
+  el.className = 'stream-section';
+  const prelimClass = preliminary ? ' score-preliminary' : '';
+  el.innerHTML = `<div class="score-strip${prelimClass}"><div class="score-strip-main">${scoreBadge(scored.overall, scored.band)}<div><small>Overall PDP score</small><p>${scored.gapCount} gap${scored.gapCount === 1 ? '' : 's'} found · ${scored.warningCount} claim${scored.warningCount === 1 ? '' : 's'} to verify</p></div></div>${preliminary ? '<p class="score-strip-note">Preliminary score — waiting for full analysis.</p>' : '<p class="score-strip-note">Heuristic score from this audit\'s gaps and coverage.</p>'}</div>`;
+}
+
+function renderStreamGaps(state) {
+  const el = document.getElementById('stream-gaps');
+  if (!el || !state.competitorGaps.length) return;
+  el.className = 'stream-section';
+  el.innerHTML = `<div class="report-section-head" id="report-gaps"><p class="eyebrow">Where you're losing shoppers</p></div>
+    <div class="proof-section"><small>Competitor gaps</small><ul>${state.competitorGaps.slice(0, 4).map((item) => `<li><strong>${escapeHtml(item.gap || 'Gap found')}</strong>${item.impact ? ` · ${escapeHtml(item.impact)} impact` : ''}${item.recommendation ? `<br />${escapeHtml(item.recommendation)}` : ''}</li>`).join('')}</ul></div>`;
+}
+
+function renderStreamCompetitors(state) {
+  const el = document.getElementById('stream-competitors');
+  if (!el || !state.competitors.length) return;
+  el.className = 'stream-section';
+  el.innerHTML = `<div class="proof-section"><small>Competitor pages compared</small><ul>${state.competitors.slice(0, 5).map((item) => { const url = typeof item === 'string' ? item : item.url; return url ? `<li><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a></li>` : ''; }).join('')}</ul></div>`;
+}
+
+function renderStreamPackSections(pack, state, { preliminary = false } = {}) {
+  if (!pack) return;
+  const competitorGaps = state.competitorGaps || [];
+  const claimWarnings = state.claimWarnings || [];
+  const evidence = state.evidence || [];
+  const evidenceById = new Map(evidence.map((item) => [item.id, item]));
+  const scored = scoreAudit({ newTitle: state.newTitle || '', fullPack: pack, competitorGaps, claimWarnings });
+  const scoreById = new Map(scored.sections.map((s) => [s.id, s]));
+
+  const bulletsCopy = (pack.bullets || []).map((item) => `- ${item}`).join('\n');
+  const faqCopy = (pack.faqs || []).map((item) => `Q: ${item.question}\nA: ${item.answer}`).join('\n\n');
+  const wholePackCopy = [
+    `TITLE\n${state.newTitle || ''}`,
+    `DESCRIPTION\n${pack.description || ''}`,
+    `BENEFITS\n${bulletsCopy}`,
+    `FAQS\n${faqCopy}`,
+    `TRUST COPY\n${pack.trustCopy || ''}`,
+    `SEO\nMeta title: ${pack.seo?.metaTitle || ''}\nMeta description: ${pack.seo?.metaDescription || ''}\nKeywords: ${(pack.seo?.keyTerms || []).join(', ')}`,
+  ].join('\n\n');
+
+  function sectionShell(id, label, bodyHtml) {
+    const info = scoreById.get(id);
+    const sources = citationList(info?.gaps || [], evidenceById);
+    const noSourceNote = !sources && evidence.length === 0
+      ? `<p class="section-sources muted-note">No competitor sources available for this audit — generated from your page only.</p>`
+      : '';
+    const prelimClass = preliminary ? ' score-preliminary' : '';
+    return `
+      <section class="pack-section stream-section" id="report-pack-${id}">
+        <header class="pack-section-head"><h3>${escapeHtml(label)}</h3>${info ? `<span class="score-badge score-${info.band}${prelimClass}" title="${preliminary ? 'Preliminary' : 'Heuristic'} score, ${info.score} out of 100"><b>${info.score}</b><i>/100</i></span>` : ''}</header>
+        <div class="pack-section-body">${bodyHtml}</div>
+        ${sources}${noSourceNote}
+      </section>`;
+  }
+
+  const toolbar = document.getElementById('stream-pack-toolbar');
+  if (toolbar) {
+    toolbar.className = 'stream-section';
+    toolbar.innerHTML = `<div class="report-section-head" id="report-pack"><p class="eyebrow">The upgrade pack</p></div><div class="pack-toolbar">${copyControl(wholePackCopy, 'the entire pack')}<span>Copy everything at once</span></div>`;
+  }
+
+  const sections = {
+    description: sectionShell('description', 'Product description', `<div class="pack-heading">${copyControl(pack.description, 'product description')}</div><p>${escapeHtml(pack.description || '')}</p>`),
+    benefits: sectionShell('benefits', 'Benefits-first bullets', `<div class="pack-heading">${copyControl(bulletsCopy, 'benefit bullets')}</div><ul>${(pack.bullets || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`),
+    faqs: sectionShell('faqs', 'FAQ draft', `<div class="pack-heading">${copyControl(faqCopy, 'FAQs')}</div><div class="faq-list">${(pack.faqs || []).map((item) => `<details><summary>${escapeHtml(item.question)}</summary><p>${escapeHtml(item.answer)}</p></details>`).join('')}</div>`),
+    trust: sectionShell('trust', 'Trust copy', `<div class="pack-heading">${copyControl(pack.trustCopy, 'trust copy')}</div><p>${escapeHtml(pack.trustCopy || '')}</p>`),
+    images: sectionShell('images', 'Image recommendations', `<ul>${(pack.imageRecommendations || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`),
+    seo: sectionShell('seo', 'SEO metadata', `
+      <div class="pack-heading">${copyControl(`${pack.seo?.metaTitle || ''}\n${pack.seo?.metaDescription || ''}`, 'SEO metadata')}</div>
+      <div class="pack-grid-inner">
+        <div><div class="pack-heading"><small>Meta title</small></div><p>${escapeHtml(pack.seo?.metaTitle || '')}</p></div>
+        <div><div class="pack-heading"><small>Meta description</small></div><p>${escapeHtml(pack.seo?.metaDescription || '')}</p></div>
+      </div>
+      <div class="pack-keywords"><div class="pack-heading"><small>Search keywords</small></div><p>${(pack.seo?.keyTerms || []).map((item) => escapeHtml(item)).join(', ')}</p></div>`),
+  };
+
+  for (const [key, html] of Object.entries(sections)) {
+    const el = document.getElementById(`stream-pack-${key}`);
+    if (el) el.innerHTML = html;
+  }
+}
+
+function renderStreamNotes(state) {
+  const el = document.getElementById('stream-notes');
+  if (!el) return;
+  const claimWarnings = state.claimWarnings || [];
+  const limitations = state.limitations || [];
+  const discoveryQueries = state.discoveryQueries || [];
+  const parts = [];
+  if (claimWarnings.length) parts.push(`<div class="proof-section warn"><small>Claims to verify</small><ul>${claimWarnings.slice(0, 5).map((item) => `<li><strong>${escapeHtml(item.proposedClaim || 'Claim')}</strong>${item.reason ? `<br />${escapeHtml(item.reason)}` : ''}</li>`).join('')}</ul></div>`);
+  if (limitations.length) parts.push(`<div class="proof-section"><small>Audit limitations</small><ul>${limitations.slice(0, 5).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`);
+  if (discoveryQueries.length) parts.push(`<div class="proof-section"><small>Competitor searches used</small><ul>${discoveryQueries.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`);
+  if (parts.length) {
+    el.className = 'stream-section';
+    el.innerHTML = `<div class="report-section-head" id="report-notes"><p class="eyebrow">Notes on this audit</p></div>${parts.join('')}`;
+  }
+}
+
+function renderStreamFooter(state, email) {
+  const el = document.getElementById('stream-footer');
+  if (!el) return;
+  const hasFinal = !!state.finalPack;
+  const sourceLabel = hasFinal ? 'Hermes-generated output' : 'Heuristic fallback';
+  const persistenceLabel = state.persistence?.status === 'saved' ? 'Audit saved' : 'Preview only';
+  el.className = 'stream-section';
+  el.innerHTML = `<div class="report-footer">
+    <p class="form-note"><span>✓</span> Payment-free v1 audit generated for ${escapeHtml(email)}. The complete pack is ready to use.</p>
+    <p class="audit-source"><strong>${escapeHtml(sourceLabel)}</strong> · ${escapeHtml(persistenceLabel)}${state.analysisMode ? ` · ${escapeHtml(state.analysisMode)}` : ''}</p>
+  </div>`;
+}
+
+function renderStreamStepError(data) {
+  const notes = document.getElementById('stream-notes');
+  if (!notes) return;
+  const banner = document.createElement('div');
+  banner.className = 'stream-banner-warn stream-section';
+  banner.textContent = `${data.step || 'Step'} encountered an issue: ${data.error || 'Unknown error'}`;
+  notes.prepend(banner);
+}
+
+function buildResultFromState(state) {
+  const pack = state.finalPack || state.enrichedPack || state.freePack;
+  return {
+    auditId: state.auditId,
+    productUrl: state.productUrl,
+    originalTitle: state.originalTitle || '',
+    newTitle: state.newTitle || '',
+    fullPack: pack,
+    competitors: state.competitors,
+    discoveryQueries: state.discoveryQueries,
+    competitorGaps: state.competitorGaps,
+    evidence: state.evidence,
+    claimWarnings: state.claimWarnings,
+    limitations: state.limitations,
+    analysisMode: state.analysisMode,
+    source: state.finalPack ? 'hermes' : 'fallback',
+    mode: state.finalPack ? 'hermes' : 'fallback',
+    note: state.finalPack ? 'Generated by the Hermes agent.' : 'Heuristic fallback — full analysis did not complete.',
+    persistence: state.persistence,
+  };
+}
+
+async function handleStreamingResponse(body, email, productUrl) {
+  const state = {
+    auditId: null,
+    productUrl,
+    originalTitle: null,
+    pdpContext: null,
+    competitors: [],
+    discoveryQueries: [],
+    freePack: null,
+    enrichedPack: null,
+    finalPack: null,
+    newTitle: null,
+    competitorGaps: [],
+    evidence: [],
+    claimWarnings: [],
+    limitations: [],
+    analysisMode: null,
+    persistence: null,
+  };
+
+  for await (const event of parseNdjsonStream(body)) {
+    switch (event.event) {
+      case 'audit_started':
+        state.auditId = event.data.auditId;
+        updateStreamStatus('Reading your product page...');
+        break;
+
+      case 'pdp_scraped':
+        state.originalTitle = event.data.originalTitle;
+        state.pdpContext = event.data.pdpContext;
+        state.freePack = event.data.freePack;
+        state.newTitle = event.data.freePack?.title || createFreeTitle(state.originalTitle);
+        renderStreamTitle(state);
+        renderStreamPackSections(state.freePack, state, { preliminary: true });
+        renderStreamScore(state, { preliminary: true });
+        updateStreamStatus('Finding competitor pages...');
+        break;
+
+      case 'competitors_found':
+        state.competitors = event.data.competitors || [];
+        state.discoveryQueries = event.data.discoveryQueries || [];
+        state.enrichedPack = event.data.enrichedPack;
+        renderStreamCompetitors(state);
+        renderStreamPackSections(state.enrichedPack, state, { preliminary: true });
+        renderStreamScore(state, { preliminary: true });
+        updateStreamStatus('Writing your upgrade pack...');
+        break;
+
+      case 'hermes_complete':
+        state.newTitle = event.data.newTitle;
+        state.finalPack = event.data.fullPack;
+        state.competitorGaps = event.data.competitorGaps || [];
+        state.evidence = event.data.evidence || [];
+        state.claimWarnings = event.data.claimWarnings || [];
+        state.limitations = event.data.limitations || [];
+        state.analysisMode = event.data.analysisMode;
+        if (event.data.auditId) state.auditId = event.data.auditId;
+        renderStreamTitle(state);
+        renderStreamGaps(state);
+        renderStreamPackSections(state.finalPack, state, { preliminary: false });
+        renderStreamScore(state, { preliminary: false });
+        renderStreamNotes(state);
+        updateStreamStatus(null);
+        break;
+
+      case 'audit_persisted':
+        state.persistence = event.data.persistence;
+        renderStreamFooter(state, email);
+        break;
+
+      case 'step_error':
+        renderStreamStepError(event.data);
+        if (event.data.step === 'hermes') {
+          state.finalPack = state.enrichedPack || state.freePack;
+          renderStreamPackSections(state.finalPack, state, { preliminary: false });
+          renderStreamScore(state, { preliminary: false });
+          renderStreamNotes(state);
+          updateStreamStatus(null);
+          renderStreamFooter(state, email);
+        }
+        break;
+
+      case 'fatal_error':
+        showErrorState(event.data.error, productUrl);
+        return;
+
+      case 'keepalive':
+        break;
+    }
+  }
+
+  lastAudit = { result: buildResultFromState(state), email, productUrl };
+  goToReport(state.auditId || 'result', { replace: true });
+  focusReport();
 }
 
 /* ------------------------------------------------------------------ */
@@ -285,14 +552,26 @@ form.addEventListener('submit', async (event) => {
   event.preventDefault(); setError('');
   const data = new FormData(form); const productUrl = String(data.get('url') || '').trim(); const email = String(data.get('email') || '').trim();
   if (!form.checkValidity()) { setError('Enter a valid product URL and email address.'); form.reportValidity(); return; }
-  showLoading(productUrl);
+  showStreamingSkeleton(productUrl);
   try {
-    const response = await fetch('/api/audit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ productUrl, email }) });
-    const raw = await response.text();
-    let result;
-    try { result = JSON.parse(raw); } catch { throw new Error('The audit service returned an invalid response. Try again.'); }
-    if (!response.ok) throw new Error(result.error || 'Audit failed. Try again.');
-    showResult(result, email, productUrl);
+    const response = await fetch('/api/audit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/x-ndjson' },
+      body: JSON.stringify({ productUrl, email }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'Audit failed. Try again.');
+    }
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/x-ndjson') && response.body) {
+      await handleStreamingResponse(response.body, email, productUrl);
+    } else {
+      const raw = await response.text();
+      let result;
+      try { result = JSON.parse(raw); } catch { throw new Error('The audit service returned an invalid response. Try again.'); }
+      showResult(result, email, productUrl);
+    }
   } catch (error) {
     showErrorState(error.message, productUrl);
   }

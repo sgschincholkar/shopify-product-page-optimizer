@@ -2,7 +2,7 @@ import http from 'node:http';
 import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { promisify } from 'node:util';
-import { buildCompetitorQueries, extractPdpContext, filterCompetitorResults, validateAuditInput } from '../src/audit-core.js';
+import { buildCompetitorQueries, createFreeTitle, createFullPack, extractPdpContext, filterCompetitorResults, validateAuditInput } from '../src/audit-core.js';
 
 const execFileAsync = promisify(execFile);
 const PORT = Number(process.env.PORT || 8787);
@@ -119,6 +119,80 @@ async function runHermes(input, pdpContext, competitors, discoveryQueries) {
   };
 }
 
+function emitEvent(res, event, data) {
+  res.write(JSON.stringify({ event, data }) + '\n');
+}
+
+function startKeepalive(res) {
+  return setInterval(() => {
+    try { emitEvent(res, 'keepalive', { ts: Date.now() }); } catch { /* client disconnected */ }
+  }, 25_000);
+}
+
+async function handleStreaming(req, res, raw) {
+  res.writeHead(200, {
+    'content-type': 'application/x-ndjson',
+    'cache-control': 'no-cache',
+    'transfer-encoding': 'chunked',
+  });
+
+  const keepalive = startKeepalive(res);
+  let input;
+  try {
+    input = validateAuditInput(JSON.parse(raw || '{}'));
+  } catch (error) {
+    emitEvent(res, 'fatal_error', { error: error.message });
+    clearInterval(keepalive);
+    return res.end();
+  }
+
+  const auditId = crypto.randomUUID();
+  emitEvent(res, 'audit_started', { auditId, productUrl: input.productUrl, ts: Date.now() });
+
+  let pdpContext;
+  try {
+    pdpContext = await scrapePdp(input.productUrl);
+    const originalTitle = pdpContext.title;
+    const freePack = createFullPack(originalTitle, []);
+    emitEvent(res, 'pdp_scraped', { originalTitle, pdpContext, freePack });
+  } catch (error) {
+    emitEvent(res, 'fatal_error', { error: error.message });
+    clearInterval(keepalive);
+    return res.end();
+  }
+
+  let competitors = [];
+  let discoveryQueries = [];
+  try {
+    const discovery = await discoverCompetitors(input, pdpContext);
+    competitors = discovery.competitors;
+    discoveryQueries = discovery.discoveryQueries;
+    const enrichedPack = createFullPack(pdpContext.title, competitors);
+    emitEvent(res, 'competitors_found', { competitors, discoveryQueries, enrichedPack });
+  } catch (error) {
+    emitEvent(res, 'step_error', { step: 'competitors', error: error.message, recoverable: true });
+  }
+
+  try {
+    const result = await runHermes(input, pdpContext, competitors, discoveryQueries);
+    emitEvent(res, 'hermes_complete', {
+      auditId: result.auditId || auditId,
+      newTitle: result.newTitle,
+      fullPack: result.fullPack,
+      competitorGaps: result.competitorGaps || [],
+      evidence: result.evidence || [],
+      claimWarnings: result.claimWarnings || [],
+      limitations: result.limitations || [],
+      analysisMode: result.analysisMode || null,
+    });
+  } catch (error) {
+    emitEvent(res, 'step_error', { step: 'hermes', error: error.message, recoverable: true });
+  }
+
+  clearInterval(keepalive);
+  res.end();
+}
+
 async function handle(req, res) {
   if (req.method === 'GET' && req.url === '/health') {
     return send(res, 200, { ok: true, service: 'hermes-audit-adapter' });
@@ -148,9 +222,11 @@ async function handle(req, res) {
     const supplied = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
     if (supplied !== expectedToken) return send(res, 401, { error: 'Unauthorized.' });
   }
+  const wantsStream = (req.headers.accept || '').includes('application/x-ndjson');
   let raw = '';
   req.on('data', (chunk) => { raw += chunk; });
   req.on('end', async () => {
+    if (wantsStream) return handleStreaming(req, res, raw);
     try {
       const input = validateAuditInput(JSON.parse(raw || '{}'));
       const pdpContext = await scrapePdp(input.productUrl);

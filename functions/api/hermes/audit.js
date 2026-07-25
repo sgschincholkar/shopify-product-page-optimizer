@@ -1,3 +1,5 @@
+// Deprecated: streaming is now handled by functions/api/audit.js via NDJSON.
+// This handler is kept for backward compatibility during the transition.
 import { buildCompetitorQueries, createFreeTitle, createFullPack, extractPdpContext, extractPageTitle, filterCompetitorResults, validateAuditInput } from '../../../src/audit-core.js';
 
 function json(data, status = 200) {

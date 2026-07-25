@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pdp-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "pdp-dev-stream",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "MOCK_STREAM=1 npx vite"],
+      "port": 5173
+    }
+  ]
+}

@@ -1,15 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { Readable } from 'node:stream';
+
 import {
   buildCompetitorQueries,
   extractPdpContext,
   filterCompetitorResults,
   normalizeHermesResult,
+  parseNdjsonStream,
   runAudit,
   scoreAudit,
   scoreSection,
   SECTION_DEFINITIONS,
+  STREAM_EVENTS,
 } from '../src/audit-core.js';
 
 const coffeePdpHtml = `
@@ -207,4 +211,78 @@ test('scoreAudit returns zero-content penalties for every section on an empty fa
   assert.ok(result.sections.every((section) => section.missingContent));
   assert.equal(result.overall, 70);
   assert.equal(result.band, 'warn');
+});
+
+test('STREAM_EVENTS exports all expected event names', () => {
+  assert.equal(STREAM_EVENTS.AUDIT_STARTED, 'audit_started');
+  assert.equal(STREAM_EVENTS.PDP_SCRAPED, 'pdp_scraped');
+  assert.equal(STREAM_EVENTS.COMPETITORS_FOUND, 'competitors_found');
+  assert.equal(STREAM_EVENTS.HERMES_COMPLETE, 'hermes_complete');
+  assert.equal(STREAM_EVENTS.FATAL_ERROR, 'fatal_error');
+  assert.equal(STREAM_EVENTS.KEEPALIVE, 'keepalive');
+});
+
+function ndjsonStream(lines) {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const line of lines) {
+        controller.enqueue(encoder.encode(line + '\n'));
+      }
+      controller.close();
+    },
+  });
+}
+
+test('parseNdjsonStream yields parsed objects from complete lines', async () => {
+  const stream = ndjsonStream([
+    JSON.stringify({ event: 'audit_started', data: { auditId: 'abc' } }),
+    JSON.stringify({ event: 'pdp_scraped', data: { originalTitle: 'Test' } }),
+  ]);
+  const events = [];
+  for await (const event of parseNdjsonStream(stream)) {
+    events.push(event);
+  }
+  assert.equal(events.length, 2);
+  assert.equal(events[0].event, 'audit_started');
+  assert.equal(events[0].data.auditId, 'abc');
+  assert.equal(events[1].event, 'pdp_scraped');
+});
+
+test('parseNdjsonStream handles partial chunks split across reads', async () => {
+  const line1 = JSON.stringify({ event: 'audit_started', data: { id: '1' } });
+  const line2 = JSON.stringify({ event: 'pdp_scraped', data: { id: '2' } });
+  const full = line1 + '\n' + line2 + '\n';
+  const mid = Math.floor(full.length / 2);
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(full.slice(0, mid)));
+      controller.enqueue(encoder.encode(full.slice(mid)));
+      controller.close();
+    },
+  });
+  const events = [];
+  for await (const event of parseNdjsonStream(stream)) {
+    events.push(event);
+  }
+  assert.equal(events.length, 2);
+  assert.equal(events[0].data.id, '1');
+  assert.equal(events[1].data.id, '2');
+});
+
+test('parseNdjsonStream skips empty lines', async () => {
+  const stream = ndjsonStream([
+    JSON.stringify({ event: 'keepalive', data: {} }),
+    '',
+    '  ',
+    JSON.stringify({ event: 'hermes_complete', data: { done: true } }),
+  ]);
+  const events = [];
+  for await (const event of parseNdjsonStream(stream)) {
+    events.push(event);
+  }
+  assert.equal(events.length, 2);
+  assert.equal(events[0].event, 'keepalive');
+  assert.equal(events[1].event, 'hermes_complete');
 });
