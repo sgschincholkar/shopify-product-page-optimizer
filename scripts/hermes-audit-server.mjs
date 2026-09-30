@@ -1,13 +1,16 @@
 import http from 'node:http';
-import { execFile } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { promisify } from 'node:util';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildCompetitorQueries, createFreeTitle, createFullPack, extractPdpContext, filterCompetitorResults, validateAuditInput } from '../src/audit-core.js';
 
-const execFileAsync = promisify(execFile);
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '0.0.0.0';
 const TIMEOUT_MS = 110_000;
+const OPENAI_MODEL = 'gpt-5.1-mini';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SKILL_DIR = path.join(__dirname, '..', 'hermes-skills', 'shopify-pdp-upgrade-audit');
 
 function loadEnvFile(path = '.env.local') {
   try {
@@ -72,10 +75,20 @@ async function discoverCompetitors(input, pdpContext) {
   };
 }
 
-function buildPrompt(input, pdpContext, competitors) {
-  return `You are the Hermes audit agent for a Shopify product-page optimizer. Return JSON only; no markdown and no commentary.
+let cachedSystemPrompt;
+function loadSystemPrompt() {
+  if (cachedSystemPrompt) return cachedSystemPrompt;
+  const skillMd = readFileSync(path.join(SKILL_DIR, 'SKILL.md'), 'utf8');
+  const seoRules = readFileSync(path.join(SKILL_DIR, 'references', 'seo-rules.md'), 'utf8');
+  const conversionRules = readFileSync(path.join(SKILL_DIR, 'references', 'conversion-rules.md'), 'utf8');
+  const copywritingRules = readFileSync(path.join(SKILL_DIR, 'references', 'copywriting-rules.md'), 'utf8');
+  const outputContract = readFileSync(path.join(SKILL_DIR, 'references', 'output-contract.md'), 'utf8');
+  cachedSystemPrompt = [skillMd, seoRules, conversionRules, copywritingRules, outputContract].join('\n\n---\n\n');
+  return cachedSystemPrompt;
+}
 
-Task: use the preloaded shopify-pdp-upgrade-audit skill to analyze the supplied PDP and competitor evidence. Follow its complete output contract, including analysisMode, fullPack, competitorGaps, evidence, claimWarnings, and limitations. Do not invent ingredients, certifications, clinical outcomes, prices, reviews, guarantees, or product capabilities. Use only supplied evidence. If evidence is missing, write conservative copy and identify the limitation.
+function buildPrompt(input, pdpContext, competitors) {
+  return `Analyze the supplied PDP and competitor evidence following the shopify-pdp-upgrade-audit skill above. Return JSON only; no markdown and no commentary.
 
 Input request:
 ${JSON.stringify(input)}
@@ -89,23 +102,41 @@ ${JSON.stringify(competitors)}
 Requirements: return JSON only; include a conversion-focused description, 5-7 benefit bullets, 5-10 FAQs, 4 image recommendations, useful key terms, a clear title under 180 characters, evidence IDs for competitor gaps, and no unsupported claims.`;
 }
 
-function parseAgentJson(stdout) {
-  const start = stdout.indexOf('{');
-  const end = stdout.lastIndexOf('}');
-  if (start < 0 || end <= start) throw new Error('Hermes returned no JSON object.');
-  const payload = JSON.parse(stdout.slice(start, end + 1));
-  if (!payload.originalTitle || !payload.newTitle || !payload.fullPack) throw new Error('Hermes returned an incomplete audit pack.');
+function parseAgentJson(content) {
+  const start = content.indexOf('{');
+  const end = content.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('Model returned no JSON object.');
+  const payload = JSON.parse(content.slice(start, end + 1));
+  if (!payload.originalTitle || !payload.newTitle || !payload.fullPack) throw new Error('Model returned an incomplete audit pack.');
   return payload;
 }
 
-async function runHermes(input, pdpContext, competitors, discoveryQueries) {
+async function runAudit(input, pdpContext, competitors, discoveryQueries) {
+  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured.');
   const prompt = buildPrompt(input, pdpContext, competitors);
-  const { stdout } = await execFileAsync('hermes', ['chat', '-Q', '--provider', 'openrouter', '-m', 'deepseek/deepseek-v4-flash', '--skills', 'shopify-pdp-upgrade-audit', '-q', prompt], {
-    timeout: TIMEOUT_MS,
-    maxBuffer: 2 * 1024 * 1024,
-    env: process.env,
-  });
-  const payload = parseAgentJson(stdout);
+  const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: loadSystemPrompt() },
+        { role: 'user', content: prompt },
+      ],
+    }),
+  }, TIMEOUT_MS);
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(`OpenAI returned HTTP ${response.status}. ${errorBody.slice(0, 300)}`);
+  }
+  const completion = await response.json();
+  const content = completion.choices?.[0]?.message?.content;
+  if (!content) throw new Error('OpenAI returned no message content.');
+  const payload = parseAgentJson(content);
   return {
     ...payload,
     auditId: crypto.randomUUID(),
@@ -113,9 +144,9 @@ async function runHermes(input, pdpContext, competitors, discoveryQueries) {
     competitors,
     discoveryQueries,
     pdpContext,
-    source: 'hermes',
-    mode: 'hermes',
-    note: 'Generated by the Hermes agent using scraped PDP context and Linkup competitor discovery.',
+    source: 'openai',
+    mode: 'openai',
+    note: 'Generated by OpenAI using scraped PDP context and Linkup competitor discovery.',
   };
 }
 
@@ -174,7 +205,7 @@ async function handleStreaming(req, res, raw) {
   }
 
   try {
-    const result = await runHermes(input, pdpContext, competitors, discoveryQueries);
+    const result = await runAudit(input, pdpContext, competitors, discoveryQueries);
     emitEvent(res, 'hermes_complete', {
       auditId: result.auditId || auditId,
       newTitle: result.newTitle,
@@ -199,21 +230,23 @@ async function handle(req, res) {
   }
   if (req.method === 'GET' && req.url === '/debug/hermes-check') {
     try {
-      const { stdout, stderr } = await execFileAsync('hermes', ['chat', '-Q', '--provider', 'openrouter', '-m', 'deepseek/deepseek-v4-flash', '-q', 'Reply with the single word OK.'], {
-        timeout: 30_000,
-        maxBuffer: 1024 * 1024,
-        env: process.env,
-      });
-      return send(res, 200, { ok: true, stdout, stderr });
+      if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not configured.');
+      const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
+        }),
+      }, 30_000);
+      const body = await response.json();
+      if (!response.ok) return send(res, 500, { ok: false, status: response.status, body });
+      return send(res, 200, { ok: true, content: body.choices?.[0]?.message?.content });
     } catch (error) {
-      return send(res, 500, {
-        ok: false,
-        message: error.message,
-        stdout: error.stdout || '',
-        stderr: error.stderr || '',
-        code: error.code,
-        signal: error.signal,
-      });
+      return send(res, 500, { ok: false, message: error.message });
     }
   }
   if (req.method !== 'POST') return send(res, 405, { error: 'Method not allowed.' });
@@ -231,7 +264,7 @@ async function handle(req, res) {
       const input = validateAuditInput(JSON.parse(raw || '{}'));
       const pdpContext = await scrapePdp(input.productUrl);
       const discovery = await discoverCompetitors(input, pdpContext);
-      return send(res, 200, await runHermes(input, pdpContext, discovery.competitors, discovery.discoveryQueries));
+      return send(res, 200, await runAudit(input, pdpContext, discovery.competitors, discovery.discoveryQueries));
     } catch (error) {
       console.error('Audit request failed:', error.stack || error.message, error.stderr ? `\nstderr: ${error.stderr}` : '');
       return send(res, 502, { error: error.message || 'Hermes audit failed.' });
